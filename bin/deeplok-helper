@@ -195,7 +195,7 @@ cmd_clear() {
 cmd_status() {
   local entries count until
   entries=$(active_lock_entries)
-  count=$(awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} skip' "$HOSTS" | grep -c '^0\.0\.0\.0 ' || true)
+  count=$(awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} skip' "$HOSTS" | grep -c "^$BLOCK_V4 " || true)
   until=$(jq -r 'map(.until) | max // 0' <<<"$entries")
   jq -cn --argjson blocked "${count:-0}" --argjson until "${until:-0}" --argjson now "$now" \
     '{installed: true, blocked: $blocked, locked: ($until > $now), lockedUntil: $until}'
