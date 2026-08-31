@@ -6,97 +6,131 @@
 <title>Deeplok — distraction blocking for Omarchy</title>
 <meta name="description" content="Freedom-style website and app blocker built into the Omarchy bar. Instant sessions, recurring schedules, and a locked mode you can't cheat past. Open source, MIT.">
 <meta property="og:title" content="Deeplok — distraction blocking for Omarchy">
-<meta property="og:description" content="Block websites and apps with sessions, schedules, and a locked mode you can't cheat past. Built for Omarchy Linux.">
+<meta property="og:description" content="Block websites and apps with sessions, schedules, and a locked mode you can't cheat past. Try the live demo.">
 <meta property="og:url" content="https://deeplok.com">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 28'%3E%3Cpath d='M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z' stroke='%23e0a458' stroke-width='2' fill='%23101014'/%3E%3Crect x='8.6' y='11.4' width='6.8' height='6.2' rx='1.2' fill='%23e0a458'/%3E%3Cpath d='M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4' stroke='%23e0a458' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0e0e12;
-    --bg2: #101014;
-    --card: #16161c;
-    --card2: #1a1a21;
-    --fg: #e6e1d7;
-    --dim: #8a857a;
+    --bg: #0a0a0e;
+    --bg2: #101016;
+    --card: #14141b;
+    --card2: #191922;
+    --fg: #ece7dc;
+    --dim: #918c80;
     --faint: #5a564e;
     --accent: #e0a458;
-    --accent-dim: #8a6836;
-    --border: #24242c;
-    --border2: #2e2e38;
+    --accent2: #f0c98c;
+    --accent-dim: #7d5f31;
+    --urgent: #c96a5a;
+    --border: #22222b;
+    --border2: #2e2e3a;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Inter", system-ui, sans-serif;
+    --disp: "Space Grotesk", "Inter", system-ui, sans-serif;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
     background: var(--bg);
     color: var(--fg);
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    line-height: 1.6;
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  ::selection { background: rgba(224,164,88,.25); }
+  ::selection { background: rgba(224,164,88,.28); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
 
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-
-  /* faint dot grid backdrop */
-  .backdrop {
-    position: fixed; inset: 0; z-index: -1;
-    background-image: radial-gradient(rgba(230,225,215,0.045) 1px, transparent 1px);
-    background-size: 26px 26px;
-    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%);
+  /* backdrop: glow + dot grid */
+  .backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+  .backdrop::before {
+    content: ""; position: absolute; inset: -20% -10% auto;
+    height: 90vh;
+    background:
+      radial-gradient(ellipse 55% 45% at 50% 0%, rgba(224,164,88,0.10), transparent 70%),
+      radial-gradient(ellipse 35% 35% at 78% 10%, rgba(120,90,200,0.07), transparent 70%);
   }
+  .backdrop::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(236,231,220,0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 30%, transparent 100%);
+  }
+
+  /* reveal on scroll */
+  .rv { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .rv.in { opacity: 1; transform: none; }
 
   /* ---------- nav ---------- */
   nav {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 22px 0;
+    padding: 20px 0;
   }
   .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--fg); }
   .logo svg { width: 22px; height: 26px; }
-  .logo b { font-size: 15px; letter-spacing: 2px; text-transform: lowercase; }
-  .nav-links { display: flex; gap: 26px; }
+  .logo b { font-family: var(--disp); font-size: 17px; letter-spacing: .5px; }
+  .nav-links { display: flex; gap: 8px; align-items: center; }
   .nav-links a {
-    color: var(--dim); text-decoration: none; font-size: 13px;
+    color: var(--dim); text-decoration: none; font-size: 13.5px; font-weight: 500;
+    padding: 7px 13px; border-radius: 8px;
   }
-  .nav-links a:hover { color: var(--fg); }
+  .nav-links a:hover { color: var(--fg); background: rgba(236,231,220,0.05); }
+  .nav-links a.gh {
+    color: var(--fg); border: 1px solid var(--border2);
+  }
+  .nav-links a.gh:hover { border-color: var(--accent-dim); color: var(--accent); background: none; }
 
   /* ---------- hero ---------- */
-  header.hero {
-    display: flex; align-items: center; gap: 56px;
-    padding: 72px 0 88px;
-  }
-  .hero-copy { flex: 1 1 460px; min-width: 300px; }
+  .hero { text-align: center; padding: 78px 0 46px; }
   .kicker {
-    display: inline-block;
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 2.5px; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 2.2px; text-transform: uppercase;
     color: var(--accent);
-    border: 1px solid var(--accent-dim);
+    border: 1px solid rgba(224,164,88,.35);
+    background: rgba(224,164,88,.06);
     border-radius: 999px;
-    padding: 5px 14px;
-    margin-bottom: 26px;
+    padding: 6px 16px;
+    margin-bottom: 30px;
   }
+  .kicker .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
   h1 {
-    font-size: clamp(34px, 5vw, 52px);
-    line-height: 1.12;
-    letter-spacing: -0.5px;
-    margin-bottom: 20px;
+    font-family: var(--disp);
+    font-size: clamp(40px, 6.4vw, 72px);
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -1.5px;
+    margin-bottom: 22px;
   }
-  h1 em { font-style: normal; color: var(--accent); }
+  h1 em {
+    font-style: normal;
+    background: linear-gradient(100deg, var(--accent) 10%, var(--accent2) 60%, var(--accent) 95%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
   .hero-sub {
-    color: var(--dim); font-size: 15px; max-width: 46ch;
-    margin-bottom: 34px;
+    color: var(--dim); font-size: 16.5px; max-width: 56ch;
+    margin: 0 auto 34px;
   }
+  .hero-sub b { color: var(--fg); font-weight: 600; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
   .install {
-    display: flex; align-items: stretch; gap: 0;
+    display: inline-flex; align-items: stretch;
     background: var(--bg2);
     border: 1px solid var(--border2);
-    border-radius: 10px;
+    border-radius: 11px;
     overflow: hidden;
-    max-width: 560px;
+    max-width: min(560px, 100%);
+    text-align: left;
   }
   .install code {
-    flex: 1; padding: 14px 16px;
+    font-family: var(--mono);
+    padding: 13px 16px;
     font-size: 12.5px; color: var(--fg);
     white-space: nowrap; overflow-x: auto;
     scrollbar-width: none;
@@ -106,146 +140,365 @@
   .install button {
     border: 0; border-left: 1px solid var(--border2);
     background: var(--card); color: var(--accent);
-    font: inherit; font-size: 12px; font-weight: 700;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
     padding: 0 18px; cursor: pointer; white-space: nowrap;
   }
   .install button:hover { background: var(--card2); }
-  .hero-meta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 18px; }
-  .hero-meta a, .hero-meta span {
-    color: var(--faint); font-size: 12px; text-decoration: none;
-  }
+  .hero-meta { color: var(--faint); font-size: 12.5px; margin-top: 14px; }
+  .hero-meta a { color: var(--faint); }
   .hero-meta a:hover { color: var(--dim); }
 
-  .hero-shot { flex: 0 1 400px; min-width: 280px; position: relative; }
-  .hero-shot::before {
-    content: ""; position: absolute; inset: -12%;
-    background: radial-gradient(ellipse at 50% 40%, rgba(224,164,88,0.12), transparent 65%);
-    z-index: -1;
+  /* ---------- demo desktop ---------- */
+  .demo-note {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+    margin: 40px 0 14px;
   }
-  .hero-shot img {
-    width: 100%; display: block;
-    border-radius: 14px;
+  .demo-note .pulse {
+    width: 7px; height: 7px; border-radius: 50%; background: #7fbf6a;
+    box-shadow: 0 0 9px rgba(127,191,106,.8);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 50% { opacity: .4; } }
+
+  .desktop-outer { position: relative; }
+  .desktop-outer::before {
+    content: ""; position: absolute; inset: -8% -12%;
+    background: radial-gradient(ellipse at 50% 35%, rgba(224,164,88,0.09), transparent 62%);
+    z-index: -1; pointer-events: none;
+  }
+  .desktop {
+    position: relative;
     border: 1px solid var(--border2);
-    box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+    border-radius: 16px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 90% 100% at 70% 110%, rgba(96,70,140,0.22), transparent 60%),
+      radial-gradient(ellipse 70% 90% at 15% 115%, rgba(190,120,50,0.14), transparent 60%),
+      linear-gradient(180deg, #0c0c11, #101018 55%, #131320);
+    box-shadow: 0 40px 110px rgba(0,0,0,0.6);
+    min-height: 620px;
+    font-family: var(--mono);
+    text-align: left;
   }
+  /* omarchy-ish top bar */
+  .obar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 14px;
+    background: rgba(10,10,14,0.92);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    user-select: none;
+  }
+  .obar .ws { display: flex; gap: 10px; color: var(--faint); }
+  .obar .ws b { color: var(--accent); }
+  .obar .right { display: flex; align-items: center; gap: 16px; color: var(--dim); }
+  .obar .widget {
+    display: flex; align-items: center; gap: 7px;
+    cursor: pointer; padding: 3px 8px; border-radius: 6px;
+    color: var(--fg);
+  }
+  .obar .widget:hover { background: rgba(236,231,220,0.07); }
+  .obar .widget.on { color: var(--accent); }
+  .obar .widget svg { width: 13px; height: 15px; }
+  .obar .sysicons { display: flex; gap: 12px; color: var(--faint); font-size: 12px; }
+  .obar .clock { color: var(--dim); }
+
+  /* panel */
+  .panel {
+    position: absolute; top: 46px; right: 14px;
+    width: 372px; max-width: calc(100% - 28px);
+    background: #131319;
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+    padding: 20px 18px;
+    font-size: 12px;
+    max-height: 545px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+  .panel.hidden { display: none; }
+  .panel .sect { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 13px; }
+  .panel .slabel {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.6px;
+    color: var(--faint); text-transform: uppercase; margin-bottom: 10px;
+  }
+  /* hero row */
+  .p-hero { display: flex; align-items: center; gap: 13px; }
+  .p-hero svg { width: 30px; height: 35px; flex-shrink: 0; }
+  .p-hero .t { flex: 1; min-width: 0; }
+  .p-hero .t b { display: block; font-size: 15px; letter-spacing: .3px; }
+  .p-hero .t span {
+    display: block; font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px;
+    color: var(--dim); text-transform: uppercase; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .p-hero .cd { font-size: 23px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .p-track { height: 5px; border-radius: 3px; background: rgba(236,231,220,0.1); margin-top: 12px; overflow: hidden; display: none; }
+  .p-track.on { display: block; }
+  .p-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width 1s linear; }
+  .p-flash { color: var(--accent); font-size: 11px; margin-top: 10px; min-height: 0; }
+
+  /* chips + rows */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--mono); font-size: 11px;
+    background: none; color: var(--fg);
+    border: 1px solid var(--border2); border-radius: 7px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent-dim); }
+  .chip.on { background: rgba(224,164,88,0.16); border-color: var(--accent-dim); color: var(--accent2); }
+  .chip.mini { font-size: 10px; padding: 4px 8px; }
+  .chip.mini:hover { border-color: var(--urgent); color: var(--urgent); }
+  .durrow { display: flex; gap: 6px; margin-top: 8px; }
+  .durrow .chip { flex: 1; text-align: center; }
+  .durrow input {
+    width: 58px; background: var(--bg2); color: var(--fg);
+    border: 1px solid var(--border2); border-radius: 7px;
+    font-family: var(--mono); font-size: 11px; text-align: center;
+  }
+  .togglerow { display: flex; gap: 20px; margin-top: 11px; align-items: center; flex-wrap: wrap; }
+  .tog { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11px; color: var(--fg); }
+  .tog .sw {
+    width: 30px; height: 17px; border-radius: 9px;
+    background: var(--border2); position: relative; transition: background .15s;
+  }
+  .tog .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--dim); transition: left .15s, background .15s;
+  }
+  .tog.on .sw { background: var(--accent-dim); }
+  .tog.on .sw::after { left: 15px; background: var(--accent2); }
+  .p-btn {
+    width: 100%; margin-top: 12px;
+    background: rgba(224,164,88,0.12);
+    border: 1px solid var(--accent-dim); border-radius: 8px;
+    color: var(--accent2); font-family: var(--mono); font-size: 12px; font-weight: 700;
+    padding: 9px; cursor: pointer;
+  }
+  .p-btn:hover { background: rgba(224,164,88,0.2); }
+  .p-btn.ghost { background: none; color: var(--dim); border-color: var(--border2); font-weight: 400; }
+  .p-btn.ghost:hover { color: var(--fg); }
+  .laterrow { display: none; gap: 6px; margin-top: 10px; align-items: center; color: var(--faint); font-size: 11px; }
+  .laterrow.on { display: flex; }
+  .laterrow input {
+    width: 46px; background: var(--bg2); color: var(--fg);
+    border: 1px solid var(--border2); border-radius: 6px;
+    font-family: var(--mono); font-size: 11px; text-align: center; padding: 4px 0;
+  }
+  .row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .row .ric { width: 16px; text-align: center; color: var(--accent); flex-shrink: 0; }
+  .row .ric.off { color: var(--faint); }
+  .row .rt { flex: 1; min-width: 0; }
+  .row .rt b { display: block; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .rt span { display: block; font-size: 10px; color: var(--dim); }
+  .row .x {
+    background: none; border: 0; color: var(--faint); cursor: pointer;
+    font-family: var(--mono); font-size: 12px; padding: 4px 7px; border-radius: 6px;
+  }
+  .row .x:hover { color: var(--urgent); background: rgba(201,106,90,0.1); }
+  .row .x.lk { cursor: not-allowed; }
+  .row .x.lk:hover { color: var(--faint); background: none; }
+  .addrow { display: flex; gap: 6px; margin-top: 8px; }
+  .addrow input {
+    flex: 1; background: var(--bg2); color: var(--fg);
+    border: 1px solid var(--border2); border-radius: 7px;
+    font-family: var(--mono); font-size: 11px; padding: 7px 10px;
+  }
+  .addrow input::placeholder { color: var(--faint); }
+  .addrow button {
+    background: none; border: 1px solid var(--border2); border-radius: 7px;
+    color: var(--fg); font-family: var(--mono); font-size: 11px; padding: 0 13px; cursor: pointer;
+  }
+  .addrow button:hover { border-color: var(--accent-dim); color: var(--accent); }
+  .sched-form { margin-top: 10px; display: none; }
+  .sched-form.on { display: block; }
+  .dayrow { display: flex; gap: 4px; margin-top: 8px; }
+  .dayrow .chip { flex: 1; text-align: center; padding: 4px 0; font-size: 10px; }
+  .timerow { display: flex; gap: 5px; align-items: center; margin-top: 8px; color: var(--faint); font-size: 11px; }
+  .timerow input {
+    width: 44px; background: var(--bg2); color: var(--fg);
+    border: 1px solid var(--border2); border-radius: 6px;
+    font-family: var(--mono); font-size: 11px; text-align: center; padding: 4px 0;
+  }
+  .hint { color: var(--faint); font-size: 10px; margin-top: 7px; }
+  .empty { color: var(--faint); font-size: 11px; }
+
+  /* toast */
+  .toast {
+    position: absolute; top: 46px; right: 14px;
+    background: #131319; border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 11.5px; max-width: 300px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.5);
+    opacity: 0; transform: translateY(-8px);
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .toast.on { opacity: 1; transform: none; }
+  .toast b { color: var(--accent); display: block; margin-bottom: 2px; font-size: 11px; }
+
+  /* demo hints */
+  .try-hints { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }
+  .try-hints span {
+    font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+    border: 1px dashed var(--border2); border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .try-hints b { color: var(--accent); font-weight: 500; }
 
   /* ---------- sections ---------- */
-  section { padding: 72px 0; border-top: 1px solid var(--border); }
+  section { padding: 88px 0 0; }
+  .sec-head { max-width: 640px; margin-bottom: 44px; }
+  .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
   .sec-label {
-    font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+    font-family: var(--mono);
+    font-size: 11px; font-weight: 700; letter-spacing: 2.4px;
     text-transform: uppercase; color: var(--accent);
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
-  h2 { font-size: 26px; letter-spacing: -0.3px; margin-bottom: 14px; }
-  .sec-sub { color: var(--dim); font-size: 14px; max-width: 60ch; margin-bottom: 42px; }
+  h2 {
+    font-family: var(--disp);
+    font-size: clamp(26px, 3.6vw, 36px);
+    font-weight: 700; letter-spacing: -0.6px; line-height: 1.15;
+    margin-bottom: 12px;
+  }
+  .sec-sub { color: var(--dim); font-size: 15px; }
 
   /* features */
-  .grid {
+  .feat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
   }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 26px 24px;
-    transition: border-color .2s ease, transform .2s ease;
+  .feat {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 30px 28px;
+    transition: background .2s;
   }
-  .card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
-  .card svg { width: 26px; height: 26px; margin-bottom: 16px; }
-  .card h3 { font-size: 15px; margin-bottom: 8px; }
-  .card p { color: var(--dim); font-size: 13px; }
-  .card p code {
-    color: var(--fg); font-size: 12px;
+  .feat:hover { background: rgba(236,231,220,0.02); }
+  .feat svg { width: 24px; height: 26px; margin-bottom: 15px; }
+  .feat h3 { font-family: var(--disp); font-size: 16.5px; font-weight: 600; margin-bottom: 7px; }
+  .feat p { color: var(--dim); font-size: 13.5px; }
+  .feat p code {
+    font-family: var(--mono); color: var(--fg); font-size: 12px;
     background: var(--bg2); border: 1px solid var(--border);
     border-radius: 4px; padding: 1px 6px;
   }
 
-  /* locked callout */
+  /* locked band */
   .locked {
-    margin-top: 14px;
-    background: linear-gradient(135deg, rgba(224,164,88,0.08), rgba(224,164,88,0.02));
+    margin-top: 56px;
+    background:
+      radial-gradient(ellipse 60% 120% at 8% 50%, rgba(224,164,88,0.13), transparent 60%),
+      var(--card);
     border: 1px solid var(--accent-dim);
-    border-radius: 12px;
-    padding: 30px 28px;
-    display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap;
+    border-radius: 16px;
+    padding: 40px 38px;
+    display: flex; gap: 28px; align-items: center; flex-wrap: wrap;
   }
-  .locked svg { width: 34px; height: 40px; flex-shrink: 0; }
-  .locked h3 { font-size: 16px; margin-bottom: 6px; color: var(--accent); }
-  .locked p { color: var(--dim); font-size: 13.5px; max-width: 72ch; }
-  .locked p b { color: var(--fg); font-weight: 700; }
+  .locked svg { width: 44px; height: 52px; flex-shrink: 0; filter: drop-shadow(0 0 18px rgba(224,164,88,.35)); }
+  .locked h3 { font-family: var(--disp); font-size: 21px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  .locked p { color: var(--dim); font-size: 14.5px; max-width: 74ch; }
+  .locked p b { color: var(--fg); font-weight: 600; }
 
-  /* how it works */
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  /* browser mock */
+  .browser {
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #101015;
+    box-shadow: 0 30px 90px rgba(0,0,0,0.55);
+  }
+  .b-top {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: #15151c;
+    border-bottom: 1px solid var(--border);
+  }
+  .b-dots { display: flex; gap: 6px; }
+  .b-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--border2); }
+  .b-url {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px;
+    white-space: nowrap; overflow: hidden;
+  }
+  .b-url .strike { text-decoration: line-through; color: var(--faint); }
+  .b-url .arrow { color: var(--faint); }
+  .b-url .to { color: var(--accent); }
+  .browser iframe { display: block; width: 100%; height: 620px; border: 0; background: #101014; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
   .step {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 26px 24px;
+    border-radius: 14px; padding: 28px 26px;
   }
   .step .n {
+    font-family: var(--mono);
     display: inline-flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; border-radius: 8px;
-    background: var(--bg2); border: 1px solid var(--border2);
+    width: 30px; height: 30px; border-radius: 9px;
+    background: rgba(224,164,88,0.1); border: 1px solid var(--accent-dim);
     color: var(--accent); font-size: 13px; font-weight: 700;
     margin-bottom: 16px;
   }
-  .step h3 { font-size: 14.5px; margin-bottom: 8px; }
-  .step p { color: var(--dim); font-size: 13px; }
+  .step h3 { font-family: var(--disp); font-size: 16px; font-weight: 600; margin-bottom: 7px; }
+  .step p { color: var(--dim); font-size: 13.5px; }
+  .step p b { color: var(--fg); font-weight: 600; }
   .step pre {
+    font-family: var(--mono);
     margin-top: 14px; background: var(--bg2);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; font-size: 11.5px; color: var(--fg);
-    overflow-x: auto;
-    scrollbar-width: none;
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 11px 13px; font-size: 11.5px; color: var(--fg);
+    overflow-x: auto; scrollbar-width: none;
   }
   .step pre::-webkit-scrollbar { display: none; }
 
-  /* block page demo */
-  .demo {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 24px; flex-wrap: wrap;
-    background: var(--card);
+  /* honest + cta */
+  .honest { color: var(--dim); font-size: 14px; max-width: 74ch; }
+  .honest li { margin: 9px 0 9px 20px; }
+  .honest b { color: var(--fg); font-weight: 600; }
+  .final-cta {
+    margin-top: 78px;
+    text-align: center;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 30px 28px;
+    border-radius: 18px;
+    background:
+      radial-gradient(ellipse 70% 130% at 50% -20%, rgba(224,164,88,0.1), transparent 60%),
+      var(--card);
+    padding: 64px 28px;
   }
-  .demo h3 { font-size: 16px; margin-bottom: 6px; }
-  .demo p { color: var(--dim); font-size: 13px; max-width: 56ch; }
-  .btn {
-    display: inline-block;
-    background: var(--accent); color: #17130b;
-    text-decoration: none; font-weight: 700; font-size: 13px;
-    border-radius: 9px; padding: 12px 22px;
-    transition: filter .15s ease;
-    white-space: nowrap;
-  }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.ghost {
-    background: transparent; color: var(--fg);
-    border: 1px solid var(--border2);
-  }
-  .btn.ghost:hover { border-color: var(--accent-dim); color: var(--accent); filter: none; }
+  .final-cta h2 { margin-bottom: 10px; }
+  .final-cta p { color: var(--dim); margin-bottom: 28px; }
 
-  /* honesty */
-  .honest { color: var(--dim); font-size: 13px; max-width: 72ch; }
-  .honest li { margin: 8px 0 8px 18px; }
-  .honest b { color: var(--fg); }
-
-  /* footer */
   footer {
     border-top: 1px solid var(--border);
-    padding: 34px 0 44px;
+    margin-top: 90px;
+    padding: 34px 0 46px;
     display: flex; align-items: center; justify-content: space-between;
     gap: 16px; flex-wrap: wrap;
-    color: var(--faint); font-size: 12px;
+    color: var(--faint); font-size: 13px;
   }
-  footer .links { display: flex; gap: 22px; }
+  footer .links { display: flex; gap: 24px; }
   footer a { color: var(--faint); text-decoration: none; }
   footer a:hover { color: var(--dim); }
 
-  @media (max-width: 760px) {
-    header.hero { padding: 40px 0 56px; }
-    .nav-links { display: none; }
+  @media (max-width: 720px) {
+    .nav-links a:not(.gh) { display: none; }
+    .hero { padding: 52px 0 30px; }
+    .panel { position: relative; top: 8px; right: auto; margin: 8px auto 20px; }
+    .desktop { min-height: 0; padding-bottom: 12px; }
+    .toast { top: auto; bottom: 12px; }
   }
 </style>
 </head>
@@ -264,46 +517,74 @@
       <b>deeplok</b>
     </a>
     <div class="nav-links">
+      <a href="#demo">Demo</a>
       <a href="#features">Features</a>
-      <a href="#how">How it works</a>
-      <a href="https://github.com/sahilhuseynzade/deeplok">GitHub</a>
+      <a href="#how">Install</a>
+      <a class="gh" href="https://github.com/sahilhuseynzade/deeplok">GitHub ↗</a>
     </div>
   </nav>
 
   <header class="hero">
-    <div class="hero-copy">
-      <span class="kicker">Omarchy plugin · open source</span>
-      <h1>Block the noise.<br><em>Keep the hours.</em></h1>
-      <p class="hero-sub">
-        Deeplok is a Freedom-style website &amp; app blocker that lives in your
-        Omarchy bar. Instant sessions, recurring schedules, and a locked mode
-        you can't talk your way out of.
-      </p>
+    <span class="kicker"><span class="dot"></span>Omarchy plugin · open source</span>
+    <h1>Block the noise.<br><em>Keep the hours.</em></h1>
+    <p class="hero-sub">
+      Deeplok is a <b>Freedom-style website &amp; app blocker</b> living in your
+      Omarchy bar — instant sessions, recurring schedules, and a locked mode
+      you can't talk your way out of.
+    </p>
+    <div class="cta-row">
       <div class="install">
         <code id="cmd"><span class="p">$</span> omarchy plugin add https://github.com/sahilhuseynzade/deeplok.git --enable</code>
         <button id="copy" type="button" aria-label="Copy install command">copy</button>
       </div>
-      <div class="hero-meta">
-        <span>MIT licensed</span>
-        <span>·</span>
-        <a href="https://github.com/sahilhuseynzade/deeplok">source on GitHub</a>
-        <span>·</span>
-        <span>no accounts, no subscriptions</span>
+    </div>
+    <div class="hero-meta">
+      MIT licensed &nbsp;·&nbsp; no accounts, no subscriptions &nbsp;·&nbsp;
+      <a href="https://github.com/sahilhuseynzade/deeplok">source on GitHub</a>
+    </div>
+
+    <div class="demo-note" id="demo"><span class="pulse"></span>live demo — click around, nothing installs</div>
+
+    <div class="desktop-outer rv">
+      <div class="desktop" id="desktop">
+        <div class="obar">
+          <div class="ws"><b>1</b><span>2</span><span>3</span><span>4</span></div>
+          <div class="right">
+            <span class="widget" id="bar-widget" title="Deeplok">
+              <svg viewBox="0 0 24 28" fill="none">
+                <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
+                      stroke="currentColor" stroke-width="2.2" fill="none"/>
+                <rect x="8.6" y="11.4" width="6.8" height="6.2" rx="1.2" fill="currentColor"/>
+                <path d="M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4" stroke="currentColor" stroke-width="1.8" fill="none"/>
+              </svg>
+              <span id="bar-label"></span>
+            </span>
+            <span class="sysicons">󰖩&nbsp; 󰕾&nbsp; 󰁹</span>
+            <span class="clock" id="bar-clock">00:00</span>
+          </div>
+        </div>
+
+        <div class="panel" id="panel"></div>
+        <div class="toast" id="toast"></div>
       </div>
     </div>
-    <div class="hero-shot">
-      <img src="/panel.png" width="460" height="660"
-           alt="Deeplok panel in the Omarchy bar: an active block with countdown, sessions, and schedules">
+
+    <div class="try-hints">
+      <span>try: <b>start a 15m session</b></span>
+      <span>try: start a <b>locked</b> one — then end it</span>
+      <span>try: add <b>a schedule</b> for tomorrow 09:00</span>
     </div>
   </header>
 
   <section id="features">
-    <div class="sec-label">Features</div>
-    <h2>Everything Freedom does, living in your bar</h2>
-    <p class="sec-sub">One click on the shield: start a block, build lists, set the week's rhythm.</p>
+    <div class="sec-head rv">
+      <div class="sec-label">Features</div>
+      <h2>Everything Freedom does, living in your bar</h2>
+      <p class="sec-sub">One click on the shield: start a block, build lists, set the week's rhythm.</p>
+    </div>
 
-    <div class="grid">
-      <div class="card">
+    <div class="feat-grid rv">
+      <div class="feat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round">
           <circle cx="4.5" cy="6" r="1.4" fill="#e0a458" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/>
           <circle cx="4.5" cy="12" r="1.4" fill="#e0a458" stroke="none"/><line x1="9" y1="12" x2="20" y2="12"/>
@@ -312,16 +593,14 @@
         <h3>Blocklists</h3>
         <p>Named groups of websites and apps — <code>youtube.com</code>, <code>steam</code>, <code>discord</code>. Mix and match per session.</p>
       </div>
-
-      <div class="card">
+      <div class="feat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linejoin="round">
           <path d="M13 2 L5 14 H11 L10 22 L19 9 H12 Z"/>
         </svg>
         <h3>Instant sessions</h3>
         <p>Pick lists, pick 15 minutes or 12 hours, block now. The bar counts down with you.</p>
       </div>
-
-      <div class="card">
+      <div class="feat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round">
           <circle cx="12" cy="13" r="8.5"/><line x1="12" y1="13" x2="12" y2="8"/><line x1="12" y1="13" x2="15.5" y2="15"/>
           <line x1="9" y1="2.5" x2="15" y2="2.5"/>
@@ -329,8 +608,7 @@
         <h3>Scheduled starts</h3>
         <p>Choose a date and time; the block arms itself. Tomorrow-you doesn't get a vote.</p>
       </div>
-
-      <div class="card">
+      <div class="feat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 3 L21 7 L17 11"/><path d="M21 7 H8 a5 5 0 0 0 -5 5"/>
           <path d="M7 21 L3 17 L7 13"/><path d="M3 17 H16 a5 5 0 0 0 5 -5"/>
@@ -338,8 +616,7 @@
         <h3>Recurring schedules</h3>
         <p>Mon–Fri 09:00–12:00, weekend evenings, overnight ranges — the week runs on rails.</p>
       </div>
-
-      <div class="card">
+      <div class="feat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linejoin="round">
           <rect x="3" y="4" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/>
           <line x1="9.5" y1="12" x2="14.5" y2="17" stroke-linecap="round"/>
@@ -348,9 +625,8 @@
         <h3>App blocking</h3>
         <p>Windows of blocked apps close the moment they appear, with a polite notification.</p>
       </div>
-
-      <div class="card">
-        <svg viewBox="0 0 24 28" fill="none" aria-hidden="true">
+      <div class="feat">
+        <svg viewBox="0 0 24 28" fill="none">
           <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
                 stroke="#e0a458" stroke-width="1.7" fill="none"/>
           <path d="M8 13.5 L11 16.5 L16.5 10.5" stroke="#e0a458" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -360,7 +636,7 @@
       </div>
     </div>
 
-    <div class="locked">
+    <div class="locked rv">
       <svg viewBox="0 0 24 28" fill="none" aria-hidden="true">
         <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
               stroke="#e0a458" stroke-width="1.6" fill="rgba(224,164,88,0.07)"/>
@@ -379,12 +655,32 @@
     </div>
   </section>
 
-  <section id="how">
-    <div class="sec-label">How it works</div>
-    <h2>Three steps, then it runs itself</h2>
-    <p class="sec-sub">Open source, auditable, and honest about its limits — read the fine print on GitHub.</p>
+  <section id="wall">
+    <div class="sec-head center rv">
+      <div class="sec-label">The blocked moment</div>
+      <h2>What you see instead of the feed</h2>
+      <p class="sec-sub">Live preview — this is the real page a blocked visit lands on.</p>
+    </div>
+    <div class="browser rv">
+      <div class="b-top">
+        <div class="b-dots"><i></i><i></i><i></i></div>
+        <div class="b-url">
+          <span class="strike">youtube.com</span>
+          <span class="arrow">→</span>
+          <span class="to">block.deeplok.com</span>
+        </div>
+      </div>
+      <iframe id="wall-frame" title="Deeplok block page preview" loading="lazy"></iframe>
+    </div>
+  </section>
 
-    <div class="steps">
+  <section id="how">
+    <div class="sec-head rv">
+      <div class="sec-label">Install</div>
+      <h2>Three steps, then it runs itself</h2>
+      <p class="sec-sub">Open source, auditable, and honest about its limits.</p>
+    </div>
+    <div class="steps rv">
       <div class="step">
         <span class="n">1</span>
         <h3>Install the plugin</h3>
@@ -407,23 +703,26 @@
   </section>
 
   <section>
-    <div class="demo">
-      <div>
-        <h3>See what a blocked moment looks like</h3>
-        <p>Instead of an error page: which site, when the block ends, and a line from someone who understood time better than the feed does.</p>
-      </div>
-      <a class="btn" id="demo-link" href="https://block.deeplok.com/?site=youtube.com">Preview the block page</a>
+    <div class="sec-head rv">
+      <div class="sec-label">Fine print</div>
+      <h2>Honest limitations</h2>
     </div>
-  </section>
-
-  <section>
-    <div class="sec-label">Fine print</div>
-    <h2>Honest limitations</h2>
-    <ul class="honest">
+    <ul class="honest rv">
       <li>You have root on your own machine — Deeplok raises the friction, it doesn't make bypass impossible. (Neither does anything else.)</li>
       <li>Sites that hard-force HTTPS (YouTube, Instagram…) show the browser's own error instead of the block page. <b>They're still blocked.</b></li>
       <li>Browsers with DNS-over-HTTPS enabled can bypass hosts-based blocking — turn DoH off for best results.</li>
     </ul>
+
+    <div class="final-cta rv">
+      <h2>Your hours are the product.<br><em style="font-style:normal;color:var(--accent)">Stop giving them away.</em></h2>
+      <p>Free, open source, five seconds to install.</p>
+      <div class="cta-row">
+        <div class="install">
+          <code><span class="p">$</span> omarchy plugin add https://github.com/sahilhuseynzade/deeplok.git --enable</code>
+          <button id="copy2" type="button">copy</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <footer>
@@ -436,27 +735,440 @@
   </footer>
 
 </div>
+
 <script>
-  document.getElementById("year").textContent = new Date().getFullYear();
+"use strict";
+/* ================= page chrome ================= */
+document.getElementById("year").textContent = new Date().getFullYear();
+document.getElementById("wall-frame").src =
+  "https://block.deeplok.com/?site=youtube.com&until=" + (Math.floor(Date.now() / 1000) + 47 * 60);
 
-  // Demo link gets a live end-time so the preview shows the real countdown.
-  var demo = document.getElementById("demo-link");
-  demo.href = "https://block.deeplok.com/?site=youtube.com&until="
-    + (Math.floor(Date.now() / 1000) + 47 * 60);
-
-  var btn = document.getElementById("copy");
+function wireCopy(id) {
+  var btn = document.getElementById(id);
+  if (!btn) return;
   btn.addEventListener("click", function () {
     var text = "omarchy plugin add https://github.com/sahilhuseynzade/deeplok.git --enable";
-    function done(label) {
-      btn.textContent = label;
-      setTimeout(function () { btn.textContent = "copy"; }, 1600);
-    }
-    if (navigator.clipboard)
-      navigator.clipboard.writeText(text).then(
-        function () { done("copied"); },
-        function () { done("failed"); });
+    function done(l) { btn.textContent = l; setTimeout(function () { btn.textContent = "copy"; }, 1600); }
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { done("copied"); }, function () { done("failed"); });
     else done("failed");
   });
+}
+wireCopy("copy"); wireCopy("copy2");
+
+var io = new IntersectionObserver(function (es) {
+  es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll(".rv").forEach(function (el) { io.observe(el); });
+
+/* ================= interactive demo =================
+   A faithful, client-side simulation of the Deeplok panel.
+   Nothing here touches your machine — state lives in this tab. */
+(function () {
+  var uid = function () { return Math.random().toString(36).slice(2, 9); };
+  var DAY = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  var S = {
+    lists: [
+      { id: "l1", name: "Distractions", sites: ["youtube.com","x.com","instagram.com","reddit.com","tiktok.com"], apps: ["discord"] },
+      { id: "l2", name: "Games", sites: [], apps: ["steam"] }
+    ],
+    schedules: [
+      { id: "s1", name: "Deep work", listIds: ["l1"], days: [1,2,3,4,5], startMin: 540, endMin: 720, enabled: true, locked: false }
+    ],
+    sessions: [],
+    sel: ["l1","l2"], minutes: 15, locked: false, later: false,
+    laterH: 0, laterM: 0,
+    editing: null, schedOpen: false,
+    schedSel: ["l1"], schedDays: [1,2,3,4,5], schedLocked: false,
+    panelOpen: true, flash: ""
+  };
+  (function () { var t = new Date(Date.now() + 3600e3); S.laterH = t.getHours(); S.laterM = 0; })();
+
+  var flashTimer = null;
+  function flash(msg) {
+    S.flash = msg;
+    var el = document.getElementById("p-flash");
+    if (el) el.textContent = msg ? "⚠ " + msg : "";
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () {
+      S.flash = "";
+      var e2 = document.getElementById("p-flash");
+      if (e2) e2.textContent = "";
+    }, 3500);
+  }
+
+  var toastTimer = null;
+  function toast(title, body) {
+    var el = document.getElementById("toast");
+    el.innerHTML = "<b></b><span></span>";
+    el.children[0].textContent = title;
+    el.children[1].textContent = body;
+    el.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("on"); }, 3200);
+  }
+
+  /* ---- model (mirrors lib/Model.js) ---- */
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+  function hhmm(m) { return pad2(Math.floor(m / 60)) + ":" + pad2(m % 60); }
+  function fmtClock(ms) { var d = new Date(ms); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function fmtCd(ms) {
+    if (ms <= 0) return "0m";
+    var s = Math.ceil(ms / 1000);
+    if (s < 60) return s + "s";
+    var m = Math.ceil(s / 60);
+    if (m < 60) return m + "m";
+    var h = Math.floor(m / 60); m = m % 60;
+    return m ? h + "h " + m + "m" : h + "h";
+  }
+  function daysLabel(days) {
+    if (days.length === 7) return "Every day";
+    var wd = [1,2,3,4,5];
+    if (days.length === 5 && wd.every(function (d) { return days.indexOf(d) !== -1; })) return "Mon–Fri";
+    if (days.length === 2 && days.indexOf(0) !== -1 && days.indexOf(6) !== -1) return "Weekends";
+    return [1,2,3,4,5,6,0].filter(function (d) { return days.indexOf(d) !== -1; })
+      .map(function (d) { return DAY[d]; }).join(", ");
+  }
+  function schedActive(sc, now) {
+    if (!sc.enabled || !sc.days.length || sc.startMin === sc.endMin) return false;
+    var d = new Date(now), m = d.getHours() * 60 + d.getMinutes(), day = d.getDay(), prev = (day + 6) % 7;
+    if (sc.startMin < sc.endMin) return sc.days.indexOf(day) !== -1 && m >= sc.startMin && m < sc.endMin;
+    if (sc.days.indexOf(day) !== -1 && m >= sc.startMin) return true;
+    return sc.days.indexOf(prev) !== -1 && m < sc.endMin;
+  }
+  function schedEnd(sc, now) {
+    var d = new Date(now);
+    var end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(sc.endMin / 60), sc.endMin % 60).getTime();
+    if (sc.startMin < sc.endMin) return end;
+    if (d.getHours() * 60 + d.getMinutes() < sc.endMin) return end;
+    return end + 86400e3;
+  }
+  function block(now) {
+    var items = [];
+    S.sessions.forEach(function (x) {
+      if (x.startsAt <= now && now < x.endsAt)
+        items.push({ end: x.endsAt, start: x.startsAt, locked: x.locked, listIds: x.listIds });
+    });
+    S.schedules.forEach(function (sc) {
+      if (schedActive(sc, now)) {
+        var end = schedEnd(sc, now);
+        var len = ((sc.endMin - sc.startMin) % 1440 + 1440) % 1440;
+        items.push({ end: end, start: end - len * 60000, locked: sc.locked, listIds: sc.listIds });
+      }
+    });
+    var sites = {}, apps = {}, lockedLists = {};
+    var end = 0, start = 0, lockedUntil = 0;
+    items.forEach(function (it) {
+      if (it.end > end) end = it.end;
+      if (!start || it.start < start) start = it.start;
+      if (it.locked && it.end > lockedUntil) lockedUntil = it.end;
+      it.listIds.forEach(function (id) {
+        var l = S.lists.find(function (x) { return x.id === id; });
+        if (!l) return;
+        if (it.locked) lockedLists[id] = 1;
+        l.sites.forEach(function (s) { sites[s] = 1; });
+        l.apps.forEach(function (a) { apps[a] = 1; });
+      });
+    });
+    return {
+      active: items.length > 0, sites: Object.keys(sites).length, apps: Object.keys(apps).length,
+      endsAt: end, startsAt: start, lockedUntil: lockedUntil, lockedLists: lockedLists
+    };
+  }
+  function listLocked(id) { return !!block(Date.now()).lockedLists[id]; }
+  function schedLockedNow(sc) { return sc.locked && schedActive(sc, Date.now()); }
+  function count(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
+
+  /* ---- actions (exposed for inline handlers) ---- */
+  var A = window.__deeplok = {};
+
+  A.togglePanel = function () { S.panelOpen = !S.panelOpen; render(); };
+  A.selList = function (id) {
+    var i = S.sel.indexOf(id);
+    if (i === -1) S.sel.push(id); else S.sel.splice(i, 1);
+    render();
+  };
+  A.setMin = function (m) { S.minutes = m; render(); };
+  A.setMinCustom = function (v) { var n = parseInt(v, 10); if (n >= 1 && n <= 720) S.minutes = n; };
+  A.toggleLocked = function () { S.locked = !S.locked; render(); };
+  A.toggleLater = function () { S.later = !S.later; render(); };
+  A.setLater = function (k, v) { var n = parseInt(v, 10); if (!isNaN(n)) S[k] = n; };
+  A.start = function () {
+    if (!S.sel.length) return flash("Pick at least one blocklist");
+    var now = Date.now(), startsAt = now;
+    if (S.later) {
+      var t = new Date(); t.setHours(S.laterH, S.laterM, 0, 0);
+      if (t.getTime() <= now) t = new Date(t.getTime() + 86400e3);
+      startsAt = t.getTime();
+    }
+    S.sessions.push({ id: uid(), listIds: S.sel.slice(), startsAt: startsAt, endsAt: startsAt + S.minutes * 60000, locked: S.locked });
+    var when = startsAt > now ? "starts " + fmtClock(startsAt) : "until " + fmtClock(startsAt + S.minutes * 60000);
+    toast("Deeplok", "Session " + (startsAt > now ? "scheduled" : "started") + " · " + when + (S.locked ? " · 🔒 locked" : ""));
+    S.later = false;
+    render();
+  };
+  A.endSession = function (id) {
+    var x = S.sessions.find(function (s) { return s.id === id; });
+    if (!x) return;
+    var now = Date.now();
+    if (x.locked && x.startsAt <= now && now < x.endsAt)
+      return flash("Locked — runs until " + fmtClock(x.endsAt) + ". That's the point.");
+    S.sessions = S.sessions.filter(function (s) { return s.id !== id; });
+    render();
+  };
+  A.toggleSched = function (id) {
+    var sc = S.schedules.find(function (s) { return s.id === id; });
+    if (!sc) return;
+    if (sc.enabled && schedLockedNow(sc)) return flash("Locked — can't disable while running");
+    sc.enabled = !sc.enabled;
+    render();
+  };
+  A.delSched = function (id) {
+    var sc = S.schedules.find(function (s) { return s.id === id; });
+    if (sc && schedLockedNow(sc)) return flash("Locked — can't delete while running");
+    S.schedules = S.schedules.filter(function (s) { return s.id !== id; });
+    render();
+  };
+  A.schedForm = function () { S.schedOpen = !S.schedOpen; render(); };
+  A.schedDay = function (d) {
+    var i = S.schedDays.indexOf(d);
+    if (i === -1) S.schedDays.push(d); else S.schedDays.splice(i, 1);
+    render();
+  };
+  A.schedList = function (id) {
+    var i = S.schedSel.indexOf(id);
+    if (i === -1) S.schedSel.push(id); else S.schedSel.splice(i, 1);
+    render();
+  };
+  A.schedLock = function () { S.schedLocked = !S.schedLocked; render(); };
+  A.saveSched = function () {
+    var name = document.getElementById("sc-name").value.trim();
+    var sh = parseInt(document.getElementById("sc-sh").value, 10) || 0;
+    var sm = parseInt(document.getElementById("sc-sm").value, 10) || 0;
+    var eh = parseInt(document.getElementById("sc-eh").value, 10) || 0;
+    var em = parseInt(document.getElementById("sc-em").value, 10) || 0;
+    if (!name) return flash("Schedule needs a name");
+    if (!S.schedDays.length) return flash("Pick at least one day");
+    if (!S.schedSel.length) return flash("Pick at least one blocklist");
+    var a = sh * 60 + sm, b = eh * 60 + em;
+    if (a === b) return flash("Start and end can't be equal");
+    S.schedules.push({ id: uid(), name: name, listIds: S.schedSel.slice(), days: S.schedDays.slice(), startMin: a, endMin: b, enabled: true, locked: S.schedLocked });
+    S.schedOpen = false;
+    toast("Deeplok", "Schedule “" + name + "” saved · " + daysLabel(S.schedDays) + " " + hhmm(a) + "–" + hhmm(b));
+    render();
+  };
+  A.editList = function (id) { S.editing = S.editing === id ? null : id; render(); };
+  A.delList = function (id) {
+    if (listLocked(id)) return flash("Locked — can't delete while blocking");
+    S.lists = S.lists.filter(function (l) { return l.id !== id; });
+    S.sel = S.sel.filter(function (x) { return x !== id; });
+    S.schedSel = S.schedSel.filter(function (x) { return x !== id; });
+    S.schedules.forEach(function (sc) { sc.listIds = sc.listIds.filter(function (x) { return x !== id; }); });
+    S.sessions.forEach(function (ss) { ss.listIds = ss.listIds.filter(function (x) { return x !== id; }); });
+    render();
+  };
+  A.rmSite = function (id, s) {
+    if (listLocked(id)) return flash("Locked — can't remove while blocking");
+    var l = S.lists.find(function (x) { return x.id === id; });
+    l.sites = l.sites.filter(function (x) { return x !== s; });
+    render();
+  };
+  A.rmApp = function (id, a) {
+    if (listLocked(id)) return flash("Locked — can't remove while blocking");
+    var l = S.lists.find(function (x) { return x.id === id; });
+    l.apps = l.apps.filter(function (x) { return x !== a; });
+    render();
+  };
+  A.addSite = function (id) {
+    var inp = document.getElementById("site-" + id);
+    var v = inp.value.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").split("/")[0].replace(/^www\./, "");
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(v)) return flash("Not a valid domain");
+    var l = S.lists.find(function (x) { return x.id === id; });
+    if (l.sites.indexOf(v) !== -1) return flash("Already in the list");
+    l.sites.push(v); inp.value = "";
+    render();
+  };
+  A.addApp = function (id) {
+    var inp = document.getElementById("app-" + id);
+    var v = inp.value.trim().toLowerCase();
+    if (!v) return flash("Empty app id");
+    var l = S.lists.find(function (x) { return x.id === id; });
+    if (l.apps.indexOf(v) !== -1) return flash("Already in the list");
+    l.apps.push(v); inp.value = "";
+    render();
+  };
+  A.addList = function () {
+    var inp = document.getElementById("new-list");
+    var v = inp.value.trim();
+    if (!v) return;
+    var id = uid();
+    S.lists.push({ id: id, name: v, sites: [], apps: [] });
+    S.editing = id; inp.value = "";
+    render();
+  };
+  A.key = function (ev, fn, arg) { if (ev.key === "Enter") A[fn](arg); };
+
+  /* ---- rendering ---- */
+  var esc = function (s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  };
+  var SHIELD = '<svg viewBox="0 0 24 28" fill="none"><path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z" stroke="#e0a458" stroke-width="1.7" fill="rgba(224,164,88,0.08)"/><rect x="8.6" y="11.4" width="6.8" height="6.2" rx="1.2" fill="#e0a458"/><path d="M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4" stroke="#e0a458" stroke-width="1.5" fill="none"/></svg>';
+
+  function chipRow(sel, fn) {
+    return '<div class="chips">' + S.lists.map(function (l) {
+      return '<button class="chip' + (sel.indexOf(l.id) !== -1 ? " on" : "") + '" onclick="__deeplok.' + fn + '(\'' + l.id + '\')">' + esc(l.name) + '</button>';
+    }).join("") + '</div>';
+  }
+
+  function render() {
+    var now = Date.now();
+    S.sessions = S.sessions.filter(function (x) { return x.endsAt > now; });
+    var b = block(now);
+    var p = document.getElementById("panel");
+    p.classList.toggle("hidden", !S.panelOpen);
+    document.getElementById("bar-widget").classList.toggle("on", b.active);
+
+    var h = "";
+
+    /* hero */
+    var status = b.active
+      ? count(b.sites, "site") + " · " + count(b.apps, "app") + " · until " + fmtClock(b.endsAt) + (b.lockedUntil > now ? " · 🔒" : "")
+      : "No active block · helper installed ✓";
+    h += '<div class="p-hero">' + SHIELD +
+      '<div class="t"><b>' + (b.active ? "Blocking" : "Deeplok") + '</b><span>' + esc(status) + '</span></div>' +
+      (b.active ? '<div class="cd" data-cd>' + fmtCd(b.endsAt - now) + '</div>' : '') +
+      '</div>' +
+      '<div class="p-track' + (b.active ? " on" : "") + '"><i id="p-prog"></i></div>' +
+      '<div class="p-flash" id="p-flash">' + (S.flash ? "⚠ " + esc(S.flash) : "") + '</div>';
+
+    /* start a block */
+    h += '<div class="sect"><div class="slabel">Start a block</div>' + chipRow(S.sel, "selList") +
+      '<div class="durrow">' +
+      [15, 30, 60, 120].map(function (m) {
+        var t = m < 60 ? m + "m" : (m / 60) + "h";
+        return '<button class="chip' + (S.minutes === m ? " on" : "") + '" onclick="__deeplok.setMin(' + m + ')">' + t + '</button>';
+      }).join("") +
+      '<input type="number" min="1" max="720" value="' + S.minutes + '" onchange="__deeplok.setMinCustom(this.value)" aria-label="minutes"> ' +
+      '</div>' +
+      '<div class="togglerow">' +
+      '<span class="tog' + (S.locked ? " on" : "") + '" onclick="__deeplok.toggleLocked()"><span class="sw"></span>Locked 🔒</span>' +
+      '<span class="tog' + (S.later ? " on" : "") + '" onclick="__deeplok.toggleLater()"><span class="sw"></span>Start later</span>' +
+      '</div>' +
+      '<div class="laterrow' + (S.later ? " on" : "") + '">at ' +
+      '<input type="number" min="0" max="23" value="' + S.laterH + '" onchange="__deeplok.setLater(\'laterH\',this.value)">:' +
+      '<input type="number" min="0" max="59" step="5" value="' + S.laterM + '" onchange="__deeplok.setLater(\'laterM\',this.value)">' +
+      '<span>(today, or tomorrow if past)</span></div>' +
+      '<button class="p-btn" onclick="__deeplok.start()">⛨ ' + (S.later ? "Schedule session" : "Start blocking now") + '</button></div>';
+
+    /* sessions */
+    if (S.sessions.length) {
+      h += '<div class="sect"><div class="slabel">Sessions</div>';
+      S.sessions.forEach(function (x) {
+        var live = x.startsAt <= now;
+        var lk = x.locked && live;
+        h += '<div class="row">' +
+          '<span class="ric' + (live ? "" : " off") + '">' + (live ? "▶" : "⏱") + '</span>' +
+          '<span class="rt"><b data-ses="' + x.id + '">' +
+          (live ? fmtCd(x.endsAt - now) + " left" : "Starts " + fmtClock(x.startsAt)) + '</b>' +
+          '<span>' + (live ? "Until " + fmtClock(x.endsAt) : fmtCd(x.endsAt - x.startsAt) + " long") + (x.locked ? " · 🔒 locked" : "") + '</span></span>' +
+          '<button class="x' + (lk ? " lk" : "") + '" onclick="__deeplok.endSession(\'' + x.id + '\')" title="' + (lk ? "Locked" : (live ? "End" : "Cancel")) + '">' + (lk ? "🔒" : "✕") + '</button></div>';
+      });
+      h += '</div>';
+    }
+
+    /* schedules */
+    h += '<div class="sect"><div class="slabel">Recurring schedules</div>';
+    if (!S.schedules.length && !S.schedOpen) h += '<div class="empty">None yet — block the same hours every week</div>';
+    S.schedules.forEach(function (sc) {
+      h += '<div class="row">' +
+        '<span class="ric' + (sc.enabled ? "" : " off") + '">📅</span>' +
+        '<span class="rt"><b>' + esc(sc.name) + (sc.locked ? " 🔒" : "") + '</b>' +
+        '<span>' + daysLabel(sc.days) + " · " + hhmm(sc.startMin) + "–" + hhmm(sc.endMin) + '</span></span>' +
+        '<span class="tog' + (sc.enabled ? " on" : "") + '" onclick="__deeplok.toggleSched(\'' + sc.id + '\')"><span class="sw"></span></span>' +
+        '<button class="x" onclick="__deeplok.delSched(\'' + sc.id + '\')" title="Delete">✕</button></div>';
+    });
+    h += '<button class="p-btn ghost" onclick="__deeplok.schedForm()">' + (S.schedOpen ? "Cancel" : "+ New schedule") + '</button>';
+    if (S.schedOpen) {
+      h += '<div class="sched-form on">' +
+        '<div class="addrow" style="margin-top:4px"><input id="sc-name" placeholder="Name — e.g. Deep work"></div>' +
+        '<div class="dayrow">' + [["Mo",1],["Tu",2],["We",3],["Th",4],["Fr",5],["Sa",6],["Su",0]].map(function (d) {
+          return '<button class="chip' + (S.schedDays.indexOf(d[1]) !== -1 ? " on" : "") + '" onclick="__deeplok.schedDay(' + d[1] + ')">' + d[0] + '</button>';
+        }).join("") + '</div>' +
+        '<div class="timerow"><input id="sc-sh" type="number" min="0" max="23" value="9">:<input id="sc-sm" type="number" min="0" max="59" step="5" value="0">' +
+        '<span>–</span><input id="sc-eh" type="number" min="0" max="23" value="12">:<input id="sc-em" type="number" min="0" max="59" step="5" value="0"></div>' +
+        '<div class="hint">End before start runs overnight — 22:00–06:00</div>' +
+        '<div style="margin-top:8px">' + chipRow(S.schedSel, "schedList") + '</div>' +
+        '<div class="togglerow"><span class="tog' + (S.schedLocked ? " on" : "") + '" onclick="__deeplok.schedLock()"><span class="sw"></span>Locked 🔒</span></div>' +
+        '<button class="p-btn" onclick="__deeplok.saveSched()">Save schedule</button></div>';
+    }
+    h += '</div>';
+
+    /* blocklists */
+    h += '<div class="sect"><div class="slabel">Blocklists</div>';
+    S.lists.forEach(function (l) {
+      var lk = listLocked(l.id);
+      var open = S.editing === l.id;
+      h += '<div class="row">' +
+        '<span class="ric">▤</span>' +
+        '<span class="rt"><b>' + esc(l.name) + (lk ? " 🔒" : "") + '</b>' +
+        '<span>' + count(l.sites.length, "site") + " · " + count(l.apps.length, "app") + '</span></span>' +
+        '<button class="x" style="color:var(--dim)" onclick="__deeplok.editList(\'' + l.id + '\')">' + (open ? "▾" : "▸") + '</button>' +
+        '<button class="x" onclick="__deeplok.delList(\'' + l.id + '\')" title="Delete">✕</button></div>';
+      if (open) {
+        h += '<div style="padding:2px 0 8px 26px">';
+        if (l.sites.length + l.apps.length) {
+          h += '<div class="hint" style="margin:0 0 6px">Click an entry to remove it</div><div class="chips">' +
+            l.sites.map(function (s) { return '<button class="chip mini" onclick="__deeplok.rmSite(\'' + l.id + '\',\'' + esc(s) + '\')">🌐 ' + esc(s) + '</button>'; }).join("") +
+            l.apps.map(function (a) { return '<button class="chip mini" onclick="__deeplok.rmApp(\'' + l.id + '\',\'' + esc(a) + '\')">▣ ' + esc(a) + '</button>'; }).join("") +
+            '</div>';
+        }
+        h += '<div class="addrow"><input id="site-' + l.id + '" placeholder="Add site — youtube.com" onkeydown="__deeplok.key(event,\'addSite\',\'' + l.id + '\')">' +
+          '<button onclick="__deeplok.addSite(\'' + l.id + '\')">Add</button></div>' +
+          '<div class="addrow"><input id="app-' + l.id + '" placeholder="Add app — e.g. steam" onkeydown="__deeplok.key(event,\'addApp\',\'' + l.id + '\')">' +
+          '<button onclick="__deeplok.addApp(\'' + l.id + '\')">Add</button></div></div>';
+      }
+    });
+    h += '<div class="addrow"><input id="new-list" placeholder="New blocklist name" onkeydown="__deeplok.key(event,\'addList\')">' +
+      '<button onclick="__deeplok.addList()">Add</button></div></div>';
+
+    p.innerHTML = h;
+    updateDynamic();
+  }
+
+  function updateDynamic() {
+    var now = Date.now();
+    var b = block(now);
+    document.getElementById("bar-clock").textContent = fmtClock(now);
+    document.getElementById("bar-label").textContent = b.active ? fmtCd(b.endsAt - now) : "";
+    var cd = document.querySelector("[data-cd]");
+    if (cd && b.active) cd.textContent = fmtCd(b.endsAt - now);
+    var prog = document.getElementById("p-prog");
+    if (prog && b.active && b.endsAt > b.startsAt)
+      prog.style.width = Math.max(2, Math.min(100, 100 * (b.endsAt - now) / (b.endsAt - b.startsAt))) + "%";
+    document.querySelectorAll("[data-ses]").forEach(function (el) {
+      var x = S.sessions.find(function (s) { return s.id === el.getAttribute("data-ses"); });
+      if (x && x.startsAt <= now) el.textContent = fmtCd(x.endsAt - now) + " left";
+    });
+  }
+
+  document.getElementById("bar-widget").addEventListener("click", A.togglePanel);
+
+  var lastActive = null;
+  setInterval(function () {
+    var now = Date.now();
+    var expired = S.sessions.some(function (x) { return x.endsAt <= now; });
+    var b = block(now);
+    if (expired || (lastActive !== null && lastActive !== b.active)) {
+      if (lastActive && !b.active) toast("Deeplok", "Block ended — welcome back.");
+      render();
+    } else {
+      updateDynamic();
+    }
+    lastActive = b.active;
+  }, 1000);
+
+  render();
+})();
 </script>
 </body>
 </html>
