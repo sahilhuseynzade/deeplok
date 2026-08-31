@@ -8,6 +8,11 @@ import "lib/Model.js" as Model
 // Deeplok control panel: live block status, quick sessions (now or at a
 // chosen date/time), recurring weekly schedules, and blocklist editing.
 // All state changes go through Service.qml; this file is UI only.
+//
+// Visual language follows the first-party panels (omarchy.power is the
+// reference): a hero with a display-size glyph and a big number on the
+// right, a progress bar, PanelSectionHeader sections split by
+// PanelSeparator, equal-width chip rows, and PanelActionButton row actions.
 Panel {
   id: root
   moduleName: "shl.deeplok"
@@ -20,6 +25,7 @@ Panel {
   readonly property bool serviceReady: service && service.ready === true
   readonly property var block: serviceReady ? service.block : null
   readonly property bool blocking: serviceReady && service.blocking
+  readonly property bool lockedNow: blocking && block.lockedUntil > nowTick
   readonly property var blocklists: serviceReady ? service.blocklists : []
   readonly property var schedules: serviceReady ? service.schedules : []
   readonly property var sessions: serviceReady ? service.sessions : []
@@ -28,9 +34,32 @@ Panel {
   readonly property bool needsSetup: serviceReady && service.installChecked && !service.installed
 
   // Guarded so the widget renders before the bar is injected.
-  readonly property color contentForeground: bar ? bar.foreground : Color.foreground
-  readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property color dimForeground: Qt.darker(root.contentForeground, 1.4)
+  readonly property color fg: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Qt.darker(fg, 1.4)
+  readonly property color faint: Qt.darker(fg, 1.8)
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+
+  // 0..1 of the current block already elapsed; drives the hero progress bar.
+  readonly property real blockFraction: {
+    if (!root.blocking) return 0
+    var total = root.block.endsAt - root.block.startsAt
+    if (!(total > 0)) return 0
+    return Math.max(0, Math.min(1, (root.block.endsAt - root.nowTick) / total))
+  }
+
+  readonly property string heroStatus: {
+    if (!root.serviceReady) return "Starting…"
+    if (root.blocking) {
+      var s = Model.fmtCount(root.block.domains.length, "site")
+        + " · " + Model.fmtCount(root.block.apps.length, "app")
+        + " · until " + Model.fmtClock(root.block.endsAt)
+      if (root.lockedNow) s += " · 󰌾 locked"
+      return s
+    }
+    var up = root.service.upcoming
+    if (up) return "Next · " + up.name + " · " + Model.fmtDayClock(up.startsAt, root.nowTick)
+    return "No blocks scheduled"
+  }
 
   // ---- Form state ----------------------------------------------------------
   property var sessionListIds: []
@@ -54,10 +83,14 @@ Panel {
   property string editingListId: ""
   property string flash: ""
 
+  readonly property var durationPresets: [
+    { t: "15m", m: 15 }, { t: "30m", m: 30 }, { t: "1h", m: 60 }, { t: "2h", m: 120 }
+  ]
+
   readonly property var dayChoices: [
-    { label: "M", v: 1 }, { label: "T", v: 2 }, { label: "W", v: 3 },
-    { label: "T", v: 4 }, { label: "F", v: 5 }, { label: "S", v: 6 },
-    { label: "S", v: 0 }
+    { label: "Mon", v: 1 }, { label: "Tue", v: 2 }, { label: "Wed", v: 3 },
+    { label: "Thu", v: 4 }, { label: "Fri", v: 5 }, { label: "Sat", v: 6 },
+    { label: "Sun", v: 0 }
   ]
 
   function showFlash(text) {
@@ -88,6 +121,8 @@ Panel {
     return new Date(now.getFullYear(), root.laterMonth - 1, root.laterDay,
       root.laterHour, root.laterMinute, 0, 0).getTime()
   }
+
+  readonly property bool laterValid: !startLater || resolvedStartMs() > nowTick
 
   function startSession() {
     if (!root.serviceReady) return
@@ -135,6 +170,8 @@ Panel {
       for (var i = 0; i < root.blocklists.length; i++) ids.push(root.blocklists[i].id)
       root.sessionListIds = ids
     }
+    if (root.schedListIds.length === 0 && root.blocklists.length > 0)
+      root.schedListIds = [root.blocklists[0].id]
     var t = new Date(Date.now() + 3600 * 1000)
     root.laterMonth = t.getMonth() + 1
     root.laterDay = t.getDate()
@@ -144,45 +181,110 @@ Panel {
 
   // ---- Reusable bits -------------------------------------------------------
 
-  component SectionLabel: Text {
-    property string label: ""
-    text: label
-    textFormat: Text.PlainText
-    color: root.dimForeground
-    font.family: root.contentFontFamily
-    font.pixelSize: Style.font.caption
-    font.letterSpacing: 1.2
-  }
-
   component BodyText: Text {
     textFormat: Text.PlainText
-    color: root.contentForeground
-    font.family: root.contentFontFamily
+    color: root.fg
+    font.family: root.fontFamily
     font.pixelSize: Style.font.bodySmall
     elide: Text.ElideRight
   }
 
-  component ListChips: Flow {
-    id: chips
-    property var selected: []
-    signal toggled(string id)
+  component CaptionText: Text {
+    textFormat: Text.PlainText
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    elide: Text.ElideRight
+  }
+
+  component SectionHeader: PanelSectionHeader {
+    foreground: root.fg
+    fontFamily: root.fontFamily
+  }
+
+  component Chip: Button {
+    foreground: root.fg
+    accent: Color.accent
+    fontFamily: root.fontFamily
+    fontSize: Style.font.bodySmall
+    bordered: true
+  }
+
+  component ToggleRow: Row {
+    property alias checked: sw.checked
+    property string label: ""
+    signal toggled()
+    spacing: Style.space(6)
+
+    ToggleSwitch {
+      id: sw
+      anchors.verticalCenter: parent.verticalCenter
+      foreground: root.fg
+      accent: Color.accent
+      onToggled: parent.toggled()
+    }
+    BodyText {
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.label
+    }
+  }
+
+  component TimeField: NumberField {
+    foreground: root.fg
+    accent: Color.accent
+    fontFamily: root.fontFamily
+    fontSize: Style.font.bodySmall
+    fieldWidth: Style.space(52)
+  }
+
+  // Two-line list row with actions pinned right: icon · title/meta · controls.
+  component PanelRow: Item {
+    property string icon: ""
+    property color iconColor: root.dim
+    property string title: ""
+    property string meta: ""
+    default property alias controls: controlsRow.children
     width: parent.width
-    spacing: Style.space(4)
+    implicitHeight: Math.max(Style.space(30), rowLabels.implicitHeight + Style.space(4))
 
-    Repeater {
-      model: root.blocklists
+    Text {
+      id: rowIcon
+      textFormat: Text.PlainText
+      visible: icon !== ""
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.icon
+      color: parent.iconColor
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.icon
+    }
 
-      Button {
-        required property var modelData
-        text: modelData.name
-        selected: chips.selected.indexOf(modelData.id) !== -1
-        bordered: true
-        foreground: root.contentForeground
-        accent: Color.accent
-        fontFamily: root.contentFontFamily
-        fontSize: Style.font.bodySmall
-        onClicked: chips.toggled(modelData.id)
+    Column {
+      id: rowLabels
+      anchors.left: rowIcon.visible ? rowIcon.right : parent.left
+      anchors.leftMargin: rowIcon.visible ? Style.space(10) : 0
+      anchors.right: controlsRow.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(1)
+
+      BodyText {
+        width: parent.width
+        text: parent.parent.title
+        font.bold: true
       }
+      CaptionText {
+        width: parent.width
+        visible: text !== ""
+        text: parent.parent.meta
+      }
+    }
+
+    Row {
+      id: controlsRow
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(4)
     }
   }
 
@@ -193,8 +295,8 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
+    contentWidth: panel.fittedContentWidth(Style.space(400))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(600))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -224,390 +326,417 @@ Panel {
         Column {
           id: panelColumn
           width: panelScroll.width
-          spacing: Style.space(10)
+          spacing: Style.space(14)
 
-          // ============================================================ Hero
-          Column {
+          // ---------- Hero: shield · title/status · countdown ----------
+          Item {
             width: parent.width
-            spacing: Style.space(2)
-
-            SectionLabel { label: "DEEPLOK" }
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroCountdown.implicitHeight)
 
             Text {
-              width: parent.width
+              id: heroIcon
               textFormat: Text.PlainText
-              text: {
-                if (!root.serviceReady) return "Starting…"
-                if (root.blocking)
-                  return "Blocking · " + Model.fmtCountdown(root.block.endsAt - root.nowTick) + " left"
-                return "No active block"
-              }
-              color: root.blocking ? Color.accent : root.contentForeground
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.title
-              font.weight: Font.DemiBold
-              elide: Text.ElideRight
+              text: root.lockedNow ? "󰦝" : (root.blocking ? "󰒃" : "󰒙")
+              color: root.blocking ? Color.accent : root.fg
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.display
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+
+              Behavior on color { ColorAnimation { duration: 200 } }
             }
 
-            BodyText {
-              width: parent.width
-              visible: root.serviceReady
-              color: root.dimForeground
-              text: {
-                if (!root.serviceReady) return ""
-                if (root.blocking) {
-                  var s = "Until " + Model.fmtClock(root.block.endsAt)
-                    + " · " + root.block.domains.length + " sites · "
-                    + root.block.apps.length + " apps"
-                  if (root.block.lockedUntil > root.nowTick)
-                    s += " · 󰌾 locked until " + Model.fmtClock(root.block.lockedUntil)
-                  return s
-                }
-                var up = root.service.upcoming
-                return up ? "Next block: " + up.name + " · " + Model.fmtDayClock(up.startsAt, root.nowTick)
-                          : "Nothing scheduled"
+            Column {
+              id: heroLabels
+              anchors.left: heroIcon.right
+              anchors.leftMargin: Style.space(14)
+              anchors.right: heroCountdown.left
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(2)
+
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: root.blocking ? "Blocking" : "Deeplok"
+                color: root.fg
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.title
+                font.bold: true
+                elide: Text.ElideRight
               }
+
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: root.heroStatus.toUpperCase()
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.2
+                elide: Text.ElideRight
+              }
+            }
+
+            Text {
+              id: heroCountdown
+              textFormat: Text.PlainText
+              visible: root.blocking
+              text: root.blocking ? Model.fmtCountdown(root.block.endsAt - root.nowTick) : ""
+              color: Color.accent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.displayLarge
+              font.bold: true
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
             }
           }
 
-          // Transient feedback line (errors, confirmations).
-          BodyText {
+          // ---------- Remaining-time bar (only while blocking) ----------
+          Item {
+            width: parent.width
+            visible: root.blocking
+            implicitHeight: Style.space(6)
+
+            Rectangle {
+              id: blockTrack
+              anchors.fill: parent
+              radius: height / 2
+              color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12)
+            }
+
+            Rectangle {
+              anchors.left: blockTrack.left
+              anchors.verticalCenter: blockTrack.verticalCenter
+              height: blockTrack.height
+              radius: blockTrack.radius
+              color: Color.accent
+              width: Math.max(blockTrack.height, blockTrack.width * root.blockFraction)
+
+              Behavior on width { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
+            }
+          }
+
+          // ---------- Transient feedback ----------
+          CaptionText {
             width: parent.width
             visible: root.flash !== ""
-            text: root.flash
+            text: "󰀪 " + root.flash
             color: Color.accent
             wrapMode: Text.WordWrap
+            elide: Text.ElideNone
           }
 
-          // ==================================================== Setup card
+          // ---------- Setup card ----------
           Column {
             width: parent.width
             visible: root.needsSetup || (root.serviceReady && root.service.installMessage !== "")
-            spacing: Style.space(6)
+            spacing: Style.space(10)
 
-            PanelSeparator { width: parent.width; foreground: root.contentForeground }
+            PanelSeparator { width: parent.width; foreground: root.fg }
 
-            BodyText {
+            CaptionText {
               width: parent.width
               wrapMode: Text.WordWrap
+              elide: Text.ElideNone
               text: root.serviceReady && root.service.installMessage !== ""
-                ? root.service.installMessage
-                : "Website blocking needs a one-time system setup (root helper + a "
-                  + "sudo rule so schedules run unattended). App blocking already works."
+                ? "󰀪 " + root.service.installMessage
+                : "Website blocking needs a one-time system setup — a root-owned "
+                  + "helper plus a scoped sudo rule, so schedules run unattended. "
+                  + "App blocking already works."
             }
 
             Button {
+              width: parent.width
+              iconText: "󱊞"
               text: root.serviceReady && root.service.installBusy ? "Installing…" : "Install system helper"
               bordered: true
-              foreground: root.contentForeground
+              foreground: root.fg
               accent: Color.accent
-              fontFamily: root.contentFontFamily
+              fontFamily: root.fontFamily
               fontSize: Style.font.bodySmall
               onClicked: if (root.serviceReady && !root.service.installBusy) root.service.installHelper()
             }
           }
 
-          PanelSeparator { width: parent.width; foreground: root.contentForeground }
+          PanelSeparator { width: parent.width; foreground: root.fg }
 
-          // ====================================================== Sessions
+          // ---------- Start a block ----------
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(10)
 
-            SectionLabel { label: "SESSIONS" }
+            SectionHeader { text: "START A BLOCK" }
 
-            // Active and upcoming one-off sessions.
-            Repeater {
-              model: root.sessions
+            Flow {
+              width: parent.width
+              spacing: Style.space(6)
 
-              Item {
-                required property var modelData
-                readonly property bool live: modelData.startsAt <= root.nowTick
-                readonly property bool lockedNow: modelData.locked && live
-                width: panelColumn.width
-                height: Style.space(24)
+              Repeater {
+                model: root.blocklists
 
-                BodyText {
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.left: parent.left
-                  anchors.right: endBtn.left
-                  anchors.rightMargin: Style.space(6)
-                  text: (live
-                    ? "Running · " + Model.fmtCountdown(modelData.endsAt - root.nowTick) + " left"
-                    : "Starts " + Model.fmtDayClock(modelData.startsAt, root.nowTick)
-                      + " · " + Model.fmtCountdown(modelData.endsAt - modelData.startsAt))
-                    + (modelData.locked ? " · 󰌾" : "")
-                }
-
-                Button {
-                  id: endBtn
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: lockedNow ? "󰌾" : (live ? "End" : "Cancel")
-                  tooltipText: lockedNow ? "Locked until " + Model.fmtClock(modelData.endsAt) : ""
-                  foreground: lockedNow ? root.dimForeground : root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.caption
-                  onClicked: {
-                    if (lockedNow) { root.showFlash("Locked — runs until " + Model.fmtClock(modelData.endsAt)); return }
-                    root.service.endSession(modelData.id)
-                  }
+                Chip {
+                  required property var modelData
+                  text: modelData.name
+                  active: root.sessionListIds.indexOf(modelData.id) !== -1
+                  tooltipText: Model.fmtCount(modelData.sites.length, "site")
+                    + " · " + Model.fmtCount(modelData.apps.length, "app")
+                  onClicked: root.sessionListIds = root.toggledIds(root.sessionListIds, modelData.id)
                 }
               }
             }
 
-            ListChips {
-              selected: root.sessionListIds
-              onToggled: function(id) { root.sessionListIds = root.toggledIds(root.sessionListIds, id) }
-            }
-
             Row {
-              spacing: Style.space(4)
+              id: durationRow
+              width: parent.width
+              spacing: Style.space(6)
+
+              readonly property real cellWidth:
+                (width - spacing * (root.durationPresets.length + 1) - customField.width - customUnit.implicitWidth)
+                / root.durationPresets.length
 
               Repeater {
-                model: [{ t: "15m", m: 15 }, { t: "30m", m: 30 }, { t: "1h", m: 60 }, { t: "2h", m: 120 }]
+                model: root.durationPresets
 
-                Button {
+                Chip {
                   required property var modelData
+                  width: durationRow.cellWidth
                   text: modelData.t
-                  selected: root.sessionMinutes === modelData.m
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.bodySmall
+                  active: root.sessionMinutes === modelData.m
                   onClicked: root.sessionMinutes = modelData.m
                 }
               }
 
-              NumberField {
-                label: ""
+              TimeField {
+                id: customField
+                anchors.verticalCenter: parent.verticalCenter
                 value: root.sessionMinutes
                 from: 5
                 to: 12 * 60
                 stepSize: 5
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
+                fieldWidth: Style.space(64)
                 onModified: function(v) { root.sessionMinutes = v }
               }
 
-              BodyText {
+              CaptionText {
+                id: customUnit
                 anchors.verticalCenter: parent.verticalCenter
                 text: "min"
-                color: root.dimForeground
               }
             }
 
             Row {
-              spacing: Style.space(10)
+              spacing: Style.space(16)
 
-              Row {
-                spacing: Style.space(4)
-                ToggleSwitch {
-                  anchors.verticalCenter: parent.verticalCenter
-                  checked: root.sessionLocked
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  onToggled: root.sessionLocked = !root.sessionLocked
-                }
-                BodyText {
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "Locked 󰌾"
-                }
+              ToggleRow {
+                label: "Locked 󰌾"
+                checked: root.sessionLocked
+                onToggled: root.sessionLocked = !root.sessionLocked
               }
 
-              Row {
-                spacing: Style.space(4)
-                ToggleSwitch {
-                  anchors.verticalCenter: parent.verticalCenter
-                  checked: root.startLater
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  onToggled: root.startLater = !root.startLater
-                }
-                BodyText {
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "Start later"
-                }
+              ToggleRow {
+                label: "Start later"
+                checked: root.startLater
+                onToggled: root.startLater = !root.startLater
               }
             }
 
-            Row {
+            Column {
               visible: root.startLater
+              width: parent.width
               spacing: Style.space(6)
 
-              NumberField {
-                label: "Month"
-                value: root.laterMonth
-                from: 1; to: 12
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
-                onModified: function(v) { root.laterMonth = v }
+              Row {
+                spacing: Style.space(6)
+
+                TimeField {
+                  value: root.laterDay
+                  from: 1; to: 31
+                  onModified: function(v) { root.laterDay = v }
+                }
+                CaptionText { anchors.verticalCenter: parent.verticalCenter; text: "/" }
+                TimeField {
+                  value: root.laterMonth
+                  from: 1; to: 12
+                  onModified: function(v) { root.laterMonth = v }
+                }
+                Item { width: Style.space(10); height: 1 }
+                TimeField {
+                  value: root.laterHour
+                  from: 0; to: 23
+                  onModified: function(v) { root.laterHour = v }
+                }
+                CaptionText { anchors.verticalCenter: parent.verticalCenter; text: ":" }
+                TimeField {
+                  value: root.laterMinute
+                  from: 0; to: 59
+                  stepSize: 5
+                  onModified: function(v) { root.laterMinute = v }
+                }
               }
-              NumberField {
-                label: "Day"
-                value: root.laterDay
-                from: 1; to: 31
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
-                onModified: function(v) { root.laterDay = v }
-              }
-              NumberField {
-                label: "Hour"
-                value: root.laterHour
-                from: 0; to: 23
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
-                onModified: function(v) { root.laterHour = v }
-              }
-              NumberField {
-                label: "Min"
-                value: root.laterMinute
-                from: 0; to: 59
-                stepSize: 5
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
-                onModified: function(v) { root.laterMinute = v }
+
+              CaptionText {
+                width: parent.width
+                color: root.laterValid ? root.dim : Color.urgent
+                text: root.laterValid
+                  ? "Starts " + Model.fmtDayClock(root.resolvedStartMs(), root.nowTick)
+                    + " · day / month · 24h clock"
+                  : "󰀪 Start time is in the past"
               }
             }
 
             Button {
-              text: root.startLater ? "Schedule session" : "Start blocking now"
+              width: parent.width
+              iconText: "󰒃"
+              text: root.startLater && root.laterValid
+                ? "Schedule for " + Model.fmtDayClock(root.resolvedStartMs(), root.nowTick)
+                : "Start blocking now"
               bordered: true
-              foreground: root.contentForeground
+              foreground: root.fg
               accent: Color.accent
-              fontFamily: root.contentFontFamily
+              fontFamily: root.fontFamily
               fontSize: Style.font.bodySmall
               onClicked: root.startSession()
             }
           }
 
-          PanelSeparator { width: parent.width; foreground: root.contentForeground }
-
-          // ==================================================== Schedules
+          // ---------- Sessions (only when some exist) ----------
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            visible: root.sessions.length > 0
+            spacing: Style.space(10)
 
-            SectionLabel { label: "RECURRING SCHEDULES" }
+            PanelSeparator { width: parent.width; foreground: root.fg }
 
-            BodyText {
-              visible: root.schedules.length === 0
-              text: "No schedules yet"
-              color: root.dimForeground
+            SectionHeader { text: "SESSIONS" }
+
+            Repeater {
+              model: root.sessions
+
+              PanelRow {
+                required property var modelData
+                readonly property bool live: modelData.startsAt <= root.nowTick
+                readonly property bool sessionLockedNow: modelData.locked && live
+
+                icon: live ? "󰐊" : "󰅐"
+                iconColor: live ? Color.accent : root.dim
+                title: live
+                  ? Model.fmtCountdown(modelData.endsAt - root.nowTick) + " left"
+                  : "Starts " + Model.fmtDayClock(modelData.startsAt, root.nowTick)
+                meta: (live ? "Until " + Model.fmtClock(modelData.endsAt)
+                            : Model.fmtCountdown(modelData.endsAt - modelData.startsAt) + " long")
+                  + (modelData.locked ? " · 󰌾 locked" : "")
+
+                PanelActionButton {
+                  iconText: sessionLockedNow ? "󰌾" : "󰅖"
+                  enabled: !sessionLockedNow
+                  tooltipText: sessionLockedNow
+                    ? "Locked until " + Model.fmtClock(modelData.endsAt)
+                    : (live ? "End session" : "Cancel session")
+                  foreground: root.fg
+                  hoverColor: Color.urgent
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.body
+                  onClicked: root.service.endSession(modelData.id)
+                }
+              }
+            }
+          }
+
+          PanelSeparator { width: parent.width; foreground: root.fg }
+
+          // ---------- Schedules ----------
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+
+            SectionHeader { text: "RECURRING SCHEDULES" }
+
+            CaptionText {
+              visible: root.schedules.length === 0 && !root.schedFormOpen
+              text: "None yet — block the same hours every week"
             }
 
             Repeater {
               model: root.schedules
 
-              Item {
+              PanelRow {
                 required property var modelData
-                readonly property bool lockedNow: root.serviceReady && root.service.scheduleLockedActive(modelData.id)
-                width: panelColumn.width
-                height: Style.space(26)
+                icon: "󰃰"
+                iconColor: modelData.enabled ? Color.accent : root.faint
+                title: modelData.name + (modelData.locked ? " 󰌾" : "")
+                meta: Model.daysLabel(modelData.days) + " · "
+                  + Model.hhmm(modelData.startMin) + "–" + Model.hhmm(modelData.endMin)
 
-                Column {
+                ToggleSwitch {
                   anchors.verticalCenter: parent.verticalCenter
-                  anchors.left: parent.left
-                  anchors.right: schedControls.left
-                  anchors.rightMargin: Style.space(6)
-                  spacing: 0
-
-                  BodyText {
-                    width: parent.width
-                    text: modelData.name + (modelData.locked ? " 󰌾" : "")
-                  }
-                  BodyText {
-                    width: parent.width
-                    color: root.dimForeground
-                    font.pixelSize: Style.font.caption
-                    text: Model.daysLabel(modelData.days) + " · "
-                      + Model.hhmm(modelData.startMin) + "–" + Model.hhmm(modelData.endMin)
+                  checked: modelData.enabled
+                  foreground: root.fg
+                  accent: Color.accent
+                  onToggled: {
+                    if (!root.service.setScheduleEnabled(modelData.id, !modelData.enabled))
+                      root.showFlash("Locked — can't disable while running")
                   }
                 }
 
-                Row {
-                  id: schedControls
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(4)
-
-                  ToggleSwitch {
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: modelData.enabled
-                    foreground: root.contentForeground
-                    accent: Color.accent
-                    onToggled: {
-                      if (!root.service.setScheduleEnabled(modelData.id, !modelData.enabled))
-                        root.showFlash("Locked — can't disable while running")
-                    }
-                  }
-
-                  Button {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "󰅖"
-                    tooltipText: "Delete schedule"
-                    foreground: root.dimForeground
-                    accent: Color.accent
-                    fontFamily: root.contentFontFamily
-                    fontSize: Style.font.caption
-                    onClicked: {
-                      if (!root.service.removeSchedule(modelData.id))
-                        root.showFlash("Locked — can't delete while running")
-                    }
+                PanelActionButton {
+                  iconText: "󰅖"
+                  tooltipText: "Delete schedule"
+                  foreground: root.fg
+                  hoverColor: Color.urgent
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.body
+                  onClicked: {
+                    if (!root.service.removeSchedule(modelData.id))
+                      root.showFlash("Locked — can't delete while running")
                   }
                 }
               }
             }
 
             Button {
-              text: root.schedFormOpen ? "Cancel" : "New schedule"
-              bordered: true
-              foreground: root.contentForeground
+              visible: !root.schedFormOpen
+              iconText: "󰐕"
+              text: "New schedule"
+              foreground: root.fg
               accent: Color.accent
-              fontFamily: root.contentFontFamily
+              fontFamily: root.fontFamily
               fontSize: Style.font.bodySmall
-              onClicked: root.schedFormOpen = !root.schedFormOpen
+              onClicked: root.schedFormOpen = true
             }
 
+            // ---------- New-schedule form ----------
             Column {
               visible: root.schedFormOpen
               width: parent.width
-              spacing: Style.space(6)
+              spacing: Style.space(8)
 
               TextField {
                 id: schedNameField
                 width: parent.width
-                placeholderText: "Name (e.g. Deep work)"
-                foreground: root.contentForeground
+                placeholderText: "Name — e.g. Deep work"
+                foreground: root.fg
                 accent: Color.accent
               }
 
               Row {
+                id: dayRow
+                width: parent.width
                 spacing: Style.space(4)
+
+                readonly property real cellWidth:
+                  (width - spacing * (root.dayChoices.length - 1)) / root.dayChoices.length
 
                 Repeater {
                   model: root.dayChoices
 
-                  Button {
+                  Chip {
                     required property var modelData
+                    width: dayRow.cellWidth
                     text: modelData.label
-                    selected: root.schedDays.indexOf(modelData.v) !== -1
-                    bordered: true
-                    foreground: root.contentForeground
-                    accent: Color.accent
-                    fontFamily: root.contentFontFamily
                     fontSize: Style.font.caption
+                    active: root.schedDays.indexOf(modelData.v) !== -1
                     onClicked: root.schedDays = root.toggledIds(root.schedDays, modelData.v)
                   }
                 }
@@ -616,96 +745,99 @@ Panel {
               Row {
                 spacing: Style.space(6)
 
-                NumberField {
-                  label: "From"
+                TimeField {
                   value: root.schedStartH
                   from: 0; to: 23
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.bodySmall
                   onModified: function(v) { root.schedStartH = v }
                 }
-                NumberField {
-                  label: ""
+                CaptionText { anchors.verticalCenter: parent.verticalCenter; text: ":" }
+                TimeField {
                   value: root.schedStartM
                   from: 0; to: 59
                   stepSize: 5
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.bodySmall
                   onModified: function(v) { root.schedStartM = v }
                 }
-                NumberField {
-                  label: "To"
+                CaptionText { anchors.verticalCenter: parent.verticalCenter; text: "  –  " }
+                TimeField {
                   value: root.schedEndH
                   from: 0; to: 23
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.bodySmall
                   onModified: function(v) { root.schedEndH = v }
                 }
-                NumberField {
-                  label: ""
+                CaptionText { anchors.verticalCenter: parent.verticalCenter; text: ":" }
+                TimeField {
                   value: root.schedEndM
                   from: 0; to: 59
                   stepSize: 5
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  fontFamily: root.contentFontFamily
-                  fontSize: Style.font.bodySmall
                   onModified: function(v) { root.schedEndM = v }
                 }
               }
 
-              BodyText {
-                color: root.dimForeground
-                font.pixelSize: Style.font.caption
-                text: "End before start = overnight (e.g. 22:00–06:00)"
+              CaptionText {
+                width: parent.width
+                color: root.faint
+                text: "End before start runs overnight — 22:00–06:00"
               }
 
-              ListChips {
-                selected: root.schedListIds
-                onToggled: function(id) { root.schedListIds = root.toggledIds(root.schedListIds, id) }
+              Flow {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: root.blocklists
+
+                  Chip {
+                    required property var modelData
+                    text: modelData.name
+                    active: root.schedListIds.indexOf(modelData.id) !== -1
+                    onClicked: root.schedListIds = root.toggledIds(root.schedListIds, modelData.id)
+                  }
+                }
+              }
+
+              ToggleRow {
+                label: "Locked 󰌾 — can't be disabled while running"
+                checked: root.schedLocked
+                onToggled: root.schedLocked = !root.schedLocked
               }
 
               Row {
-                spacing: Style.space(4)
-                ToggleSwitch {
-                  anchors.verticalCenter: parent.verticalCenter
-                  checked: root.schedLocked
-                  foreground: root.contentForeground
-                  accent: Color.accent
-                  onToggled: root.schedLocked = !root.schedLocked
-                }
-                BodyText {
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "Locked 󰌾 (can't be disabled while running)"
-                }
-              }
+                width: parent.width
+                spacing: Style.space(6)
 
-              Button {
-                text: "Save schedule"
-                bordered: true
-                foreground: root.contentForeground
-                accent: Color.accent
-                fontFamily: root.contentFontFamily
-                fontSize: Style.font.bodySmall
-                onClicked: root.saveSchedule()
+                Button {
+                  width: (parent.width - parent.spacing) * 0.62
+                  iconText: "󰃰"
+                  text: "Save schedule"
+                  bordered: true
+                  foreground: root.fg
+                  accent: Color.accent
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.bodySmall
+                  onClicked: root.saveSchedule()
+                }
+
+                Button {
+                  width: (parent.width - parent.spacing) * 0.38
+                  text: "Cancel"
+                  bordered: true
+                  foreground: root.dim
+                  accent: Color.accent
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.bodySmall
+                  onClicked: root.schedFormOpen = false
+                }
               }
             }
           }
 
-          PanelSeparator { width: parent.width; foreground: root.contentForeground }
+          PanelSeparator { width: parent.width; foreground: root.fg }
 
-          // ==================================================== Blocklists
+          // ---------- Blocklists ----------
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(10)
 
-            SectionLabel { label: "BLOCKLISTS" }
+            SectionHeader { text: "BLOCKLISTS" }
 
             Repeater {
               model: root.blocklists
@@ -714,49 +846,36 @@ Panel {
                 id: listCard
                 required property var modelData
                 readonly property bool editing: root.editingListId === modelData.id
-                readonly property bool lockedNow: root.serviceReady && root.service.lockedListActive(modelData.id)
+                readonly property bool listLockedNow: root.serviceReady && root.service.lockedListActive(modelData.id)
                 width: panelColumn.width
-                spacing: Style.space(4)
+                spacing: Style.space(6)
 
-                Item {
-                  width: parent.width
-                  height: Style.space(24)
+                PanelRow {
+                  icon: "󰈲"
+                  iconColor: listCard.listLockedNow ? Color.accent : root.dim
+                  title: listCard.modelData.name + (listCard.listLockedNow ? " 󰌾" : "")
+                  meta: Model.fmtCount(listCard.modelData.sites.length, "site")
+                    + " · " + Model.fmtCount(listCard.modelData.apps.length, "app")
 
-                  BodyText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.right: listControls.left
-                    anchors.rightMargin: Style.space(6)
-                    text: modelData.name + (listCard.lockedNow ? " 󰌾" : "")
-                      + "  ·  " + modelData.sites.length + " sites, " + modelData.apps.length + " apps"
+                  PanelActionButton {
+                    iconText: listCard.editing ? "󰅀" : "󰅂"
+                    tooltipText: listCard.editing ? "Collapse" : "Edit entries"
+                    foreground: root.fg
+                    fontFamily: root.fontFamily
+                    fontSize: Style.font.body
+                    onClicked: root.editingListId = listCard.editing ? "" : listCard.modelData.id
                   }
 
-                  Row {
-                    id: listControls
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(2)
-
-                    Button {
-                      text: listCard.editing ? "Done" : "Edit"
-                      foreground: root.contentForeground
-                      accent: Color.accent
-                      fontFamily: root.contentFontFamily
-                      fontSize: Style.font.caption
-                      onClicked: root.editingListId = listCard.editing ? "" : listCard.modelData.id
-                    }
-
-                    Button {
-                      text: "󰅖"
-                      tooltipText: "Delete blocklist"
-                      foreground: root.dimForeground
-                      accent: Color.accent
-                      fontFamily: root.contentFontFamily
-                      fontSize: Style.font.caption
-                      onClicked: {
-                        if (!root.service.removeBlocklist(listCard.modelData.id))
-                          root.showFlash("Locked — can't delete while blocking")
-                      }
+                  PanelActionButton {
+                    iconText: "󰅖"
+                    tooltipText: "Delete blocklist"
+                    foreground: root.fg
+                    hoverColor: Color.urgent
+                    fontFamily: root.fontFamily
+                    fontSize: Style.font.body
+                    onClicked: {
+                      if (!root.service.removeBlocklist(listCard.modelData.id))
+                        root.showFlash("Locked — can't delete while blocking")
                     }
                   }
                 }
@@ -764,29 +883,21 @@ Panel {
                 Column {
                   visible: listCard.editing
                   width: parent.width
-                  spacing: Style.space(4)
-
-                  BodyText {
-                    color: root.dimForeground
-                    font.pixelSize: Style.font.caption
-                    text: "Click an entry to remove it"
-                    visible: listCard.modelData.sites.length + listCard.modelData.apps.length > 0
-                  }
+                  spacing: Style.space(6)
 
                   Flow {
                     width: parent.width
                     spacing: Style.space(4)
+                    visible: listCard.modelData.sites.length + listCard.modelData.apps.length > 0
 
                     Repeater {
                       model: listCard.modelData.sites
 
-                      Button {
+                      Chip {
                         required property string modelData
                         text: "󰖟 " + modelData
-                        foreground: root.contentForeground
-                        accent: Color.accent
-                        fontFamily: root.contentFontFamily
                         fontSize: Style.font.caption
+                        tooltipText: "Click to remove"
                         onClicked: {
                           if (!root.service.removeSite(listCard.modelData.id, modelData))
                             root.showFlash("Locked — can't remove while blocking")
@@ -797,13 +908,11 @@ Panel {
                     Repeater {
                       model: listCard.modelData.apps
 
-                      Button {
+                      Chip {
                         required property string modelData
                         text: "󰣆 " + modelData
-                        foreground: root.contentForeground
-                        accent: Color.accent
-                        fontFamily: root.contentFontFamily
                         fontSize: Style.font.caption
+                        tooltipText: "Click to remove"
                         onClicked: {
                           if (!root.service.removeApp(listCard.modelData.id, modelData))
                             root.showFlash("Locked — can't remove while blocking")
@@ -814,8 +923,8 @@ Panel {
 
                   TextField {
                     width: parent.width
-                    placeholderText: "Add site (e.g. youtube.com)"
-                    foreground: root.contentForeground
+                    placeholderText: "󰖟  Add site — youtube.com"
+                    foreground: root.fg
                     accent: Color.accent
                     onAccepted: {
                       var err = root.service.addSite(listCard.modelData.id, text)
@@ -826,8 +935,8 @@ Panel {
 
                   TextField {
                     width: parent.width
-                    placeholderText: "Add app (window class, e.g. steam)"
-                    foreground: root.contentForeground
+                    placeholderText: "󰣆  Add app — window class, e.g. steam"
+                    foreground: root.fg
                     accent: Color.accent
                     onAccepted: {
                       var err = root.service.addApp(listCard.modelData.id, text)
@@ -841,13 +950,13 @@ Panel {
 
             Row {
               width: parent.width
-              spacing: Style.space(4)
+              spacing: Style.space(6)
 
               TextField {
                 id: newListField
-                width: parent.width - newListBtn.width - Style.space(4)
+                width: parent.width - newListBtn.width - parent.spacing
                 placeholderText: "New blocklist name"
-                foreground: root.contentForeground
+                foreground: root.fg
                 accent: Color.accent
                 onAccepted: newListBtn.clicked()
               }
@@ -855,11 +964,12 @@ Panel {
               Button {
                 id: newListBtn
                 anchors.verticalCenter: parent.verticalCenter
+                iconText: "󰐕"
                 text: "Add"
                 bordered: true
-                foreground: root.contentForeground
+                foreground: root.fg
                 accent: Color.accent
-                fontFamily: root.contentFontFamily
+                fontFamily: root.fontFamily
                 fontSize: Style.font.bodySmall
                 onClicked: {
                   var id = root.service.addBlocklist(newListField.text)
@@ -872,20 +982,20 @@ Panel {
             }
           }
 
-          // ==================================================== Footer
+          // ---------- Footer ----------
           Column {
             width: parent.width
             visible: root.installed
-            spacing: Style.space(4)
+            spacing: Style.space(8)
 
-            PanelSeparator { width: parent.width; foreground: root.contentForeground }
+            PanelSeparator { width: parent.width; foreground: root.fg }
 
             Button {
               text: "Uninstall system helper"
               tooltipText: "Removes the root helper and sudo rule"
-              foreground: root.dimForeground
-              accent: Color.accent
-              fontFamily: root.contentFontFamily
+              foreground: root.faint
+              accent: Color.urgent
+              fontFamily: root.fontFamily
               fontSize: Style.font.caption
               onClicked: if (!root.service.installBusy) root.service.uninstallHelper()
             }

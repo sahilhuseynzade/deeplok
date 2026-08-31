@@ -136,6 +136,7 @@ test("activeBlock unions domains and apps from active items", () => {
   assert.deepEqual(block.domains, ["x.com", "youtube.com"])
   assert.deepEqual(block.apps, ["discord", "steam"])
   // Blocking ends when the last item ends; lock covers only the session.
+  assert.equal(block.startsAt, at(9, 0).getTime())
   assert.equal(block.endsAt, at(14, 0).getTime())
   assert.equal(block.lockedUntil, at(14, 0).getTime())
   assert.deepEqual(block.lockedListIds, ["b2"])
