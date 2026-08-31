@@ -1,0 +1,159 @@
+#!/bin/bash
+#
+# deeplok-helper — root-side blocker for the Deeplok Omarchy plugin.
+#
+# Owns exactly one thing: a marked block of 0.0.0.0/:: entries in /etc/hosts,
+# plus a lock ledger (/etc/deeplok/lock.json) that stops the block from being
+# weakened while a locked session is running. Installed root-owned at
+# /usr/local/lib/deeplok/deeplok-helper by deeplok-setup so the sudoers
+# NOPASSWD rule never executes user-writable code.
+#
+# Verbs (the sudoers rule allows exactly these, no other arguments):
+#   apply   read JSON on stdin: {"domains":[],"lockedDomains":[],"lockedUntil":0}
+#           and rewrite the hosts block to match (locked domains are merged in)
+#   clear   remove the hosts block; refused while a lock is active (exit 3)
+#   status  print JSON state
+#
+# Exit codes: 0 ok, 1 usage/error, 3 refused by an active lock.
+
+set -euo pipefail
+
+HOSTS=/etc/hosts
+STATE_DIR=/etc/deeplok
+LOCK="$STATE_DIR/lock.json"
+MARK_BEGIN="# >>> deeplok >>>"
+MARK_END="# <<< deeplok <<<"
+
+die() {
+  echo "deeplok-helper: $*" >&2
+  exit 1
+}
+
+[[ $EUID -eq 0 ]] || die "must run as root (via sudo)"
+command -v jq >/dev/null 2>&1 || die "jq is required"
+
+now=$(date +%s)
+mkdir -p "$STATE_DIR"
+
+# Locked entries whose deadline has not passed. Each entry is
+# {"until": <epoch s>, "domains": [...]}; expired entries are pruned on
+# every invocation so the ledger cannot grow without bound.
+active_lock_entries() {
+  [[ -f $LOCK ]] || { echo "[]"; return; }
+  jq -c --argjson now "$now" '[.entries[]? | select((.until // 0) > $now)]' "$LOCK" 2>/dev/null || echo "[]"
+}
+
+hosts_without_block() {
+  awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' "$HOSTS"
+}
+
+# $1 = newline-separated domain list (may be empty). Rewrites /etc/hosts
+# with the deeplok block replaced. Domains were validated by the caller.
+write_hosts() {
+  local domains="$1" tmp
+  tmp=$(mktemp /etc/.hosts.deeplok.XXXXXX)
+  {
+    hosts_without_block
+    if [[ -n $domains ]]; then
+      echo "$MARK_BEGIN"
+      echo "# Managed by Deeplok (https://deeplok.com) — do not edit this block."
+      while IFS= read -r d; do
+        [[ -n $d ]] || continue
+        printf '0.0.0.0 %s\n' "$d"
+        printf ':: %s\n' "$d"
+      done <<<"$domains"
+      echo "$MARK_END"
+    fi
+  } >"$tmp"
+  chown root:root "$tmp"
+  chmod 644 "$tmp"
+  mv -f "$tmp" "$HOSTS"
+  resolvectl flush-caches 2>/dev/null || true
+}
+
+# Every domain must look like a hostname; refuse the whole payload otherwise
+# (a stray space would smuggle extra hosts entries onto the line).
+validate_domains() {
+  while IFS= read -r d; do
+    [[ -n $d ]] || continue
+    [[ $d =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+      || die "invalid domain in payload: '$d'"
+  done <<<"$1"
+}
+
+cmd_apply() {
+  local payload
+  payload=$(cat)
+  jq -e . >/dev/null 2>&1 <<<"$payload" || die "payload is not valid JSON"
+
+  local domains locked_domains locked_until
+  domains=$(jq -r '.domains[]? // empty' <<<"$payload")
+  locked_domains=$(jq -r '.lockedDomains[]? // empty' <<<"$payload")
+  locked_until=$(jq -r '(.lockedUntil // 0) | floor' <<<"$payload")
+  [[ $locked_until =~ ^[0-9]+$ ]] || die "lockedUntil must be a number"
+  validate_domains "$domains"
+  validate_domains "$locked_domains"
+
+  # Lock ledger: keep unexpired entries, add the new one when it locks
+  # anything in the future.
+  local entries
+  entries=$(active_lock_entries)
+  if [[ $locked_until -gt $now && -n $locked_domains ]]; then
+    entries=$(jq -c --argjson until "$locked_until" \
+      --argjson doms "$(jq -cRn '[inputs | select(length > 0)]' <<<"$locked_domains")" \
+      '. + [{until: $until, domains: $doms}]' <<<"$entries")
+  fi
+  if [[ $entries == "[]" ]]; then
+    rm -f "$LOCK"
+  else
+    local tmp
+    tmp=$(mktemp "$STATE_DIR/.lock.XXXXXX")
+    jq -n --argjson entries "$entries" '{entries: $entries}' >"$tmp"
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$LOCK"
+  fi
+
+  # Effective set = requested domains ∪ every still-locked domain, so a
+  # crashed or tampered-with frontend can never lift a locked block early.
+  local effective
+  effective=$(
+    {
+      echo "$domains"
+      jq -r '.[].domains[]?' <<<"$entries"
+    } | grep -v '^$' | sort -u || true
+  )
+  write_hosts "$effective"
+  local n
+  n=$(grep -c . <<<"$effective" || true)
+  echo "ok $n"
+}
+
+cmd_clear() {
+  local entries
+  entries=$(active_lock_entries)
+  if [[ $entries != "[]" ]]; then
+    local until
+    until=$(jq -r 'map(.until) | max' <<<"$entries")
+    echo "deeplok-helper: refusing to clear — locked until $(date -d "@$until" '+%Y-%m-%d %H:%M')" >&2
+    exit 3
+  fi
+  rm -f "$LOCK"
+  write_hosts ""
+  echo "ok cleared"
+}
+
+cmd_status() {
+  local entries count until
+  entries=$(active_lock_entries)
+  count=$(awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} skip' "$HOSTS" | grep -c '^0\.0\.0\.0 ' || true)
+  until=$(jq -r 'map(.until) | max // 0' <<<"$entries")
+  jq -cn --argjson blocked "${count:-0}" --argjson until "${until:-0}" --argjson now "$now" \
+    '{installed: true, blocked: $blocked, locked: ($until > $now), lockedUntil: $until}'
+}
+
+case "${1:-}" in
+apply) cmd_apply ;;
+clear) cmd_clear ;;
+status) cmd_status ;;
+*) die "usage: deeplok-helper apply|clear|status" ;;
+esac

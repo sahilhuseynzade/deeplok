@@ -1,0 +1,76 @@
+#!/bin/bash
+#
+# deeplok-setup — one-time privileged install/uninstall for Deeplok.
+#
+# Run via pkexec from the plugin panel (the user authenticates once):
+#   pkexec <plugin-dir>/bin/deeplok-setup install <plugin-dir> <username>
+#   pkexec /usr/local/lib/deeplok/deeplok-setup uninstall
+#
+# install copies deeplok-helper to a root-owned path and adds a sudoers
+# drop-in so the shell engine can apply scheduled blocks unattended
+# (NOPASSWD, restricted to the helper's three verbs). uninstall removes
+# everything — unless a locked session is still running.
+
+set -euo pipefail
+
+LIB_DIR=/usr/local/lib/deeplok
+HELPER="$LIB_DIR/deeplok-helper"
+SUDOERS=/etc/sudoers.d/50-deeplok
+STATE_DIR=/etc/deeplok
+
+die() {
+  echo "deeplok-setup: $*" >&2
+  exit 1
+}
+
+[[ $EUID -eq 0 ]] || die "must run as root (via pkexec)"
+
+cmd_install() {
+  local src_dir="${1:-}" username="${2:-}"
+  [[ -n $src_dir && -d $src_dir ]] || die "plugin directory not found: '$src_dir'"
+  [[ -f "$src_dir/bin/deeplok-helper" ]] || die "helper not found in $src_dir/bin"
+  [[ -n $username ]] || die "username required"
+  getent passwd "$username" >/dev/null || die "no such user: $username"
+  [[ $username =~ ^[a-z_][a-z0-9_-]*$ ]] || die "refusing suspicious username"
+  command -v visudo >/dev/null || die "visudo not found"
+
+  install -D -o root -g root -m 755 "$src_dir/bin/deeplok-helper" "$HELPER"
+  install -D -o root -g root -m 755 "$src_dir/bin/deeplok-setup" "$LIB_DIR/deeplok-setup"
+  install -d -o root -g root -m 755 "$STATE_DIR"
+
+  local tmp
+  tmp=$(mktemp)
+  cat >"$tmp" <<EOF
+# Installed by Deeplok (Omarchy plugin). Lets the shell engine apply and
+# lift website blocks unattended. Only the three fixed helper invocations
+# below are permitted; the helper itself is root-owned.
+$username ALL=(root) NOPASSWD: $HELPER apply, $HELPER clear, $HELPER status
+EOF
+  visudo -cf "$tmp" >/dev/null || { rm -f "$tmp"; die "generated sudoers failed validation"; }
+  install -o root -g root -m 440 "$tmp" "$SUDOERS"
+  rm -f "$tmp"
+  echo "ok installed"
+}
+
+cmd_uninstall() {
+  # A locked session must not be escapable via uninstall.
+  if [[ -f "$STATE_DIR/lock.json" ]]; then
+    local now until
+    now=$(date +%s)
+    until=$(jq -r '[.entries[]?.until] | max // 0' "$STATE_DIR/lock.json" 2>/dev/null || echo 0)
+    if [[ $until =~ ^[0-9]+$ ]] && (( until > now )); then
+      echo "deeplok-setup: refusing to uninstall — locked until $(date -d "@$until" '+%Y-%m-%d %H:%M')" >&2
+      exit 3
+    fi
+  fi
+  [[ -x $HELPER ]] && "$HELPER" clear >/dev/null 2>&1 || true
+  rm -f "$SUDOERS"
+  rm -rf "$LIB_DIR" "$STATE_DIR"
+  echo "ok uninstalled"
+}
+
+case "${1:-}" in
+install) cmd_install "${2:-}" "${3:-}" ;;
+uninstall) cmd_uninstall ;;
+*) die "usage: deeplok-setup install <plugin-dir> <username> | uninstall" ;;
+esac

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "shl.deeplok",
+  "name": "Deeplok",
+  "version": "0.1.0",
+  "author": "Sahil Huseynzade",
+  "description": "Freedom-style distraction blocker for Omarchy: block websites and apps with instant sessions, scheduled starts, recurring weekly blocks, and an optional locked mode you can't cheat past.",
+  "homepage": "https://deeplok.com",
+  "repository": "https://github.com/sahilhuseynzade/deeplok",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Deeplok",
+    "description": "Website and app blocker with schedules and locked mode",
+    "category": "Wellbeing",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
