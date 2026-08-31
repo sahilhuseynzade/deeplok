@@ -1,9 +1,9 @@
 name = "deeplok-block"
 compatibility_date = "2026-08-01"
 
-[assets]
-directory = "public"
-
 routes = [
   { pattern = "block.deeplok.com", custom_domain = true }
 ]
+
+[assets]
+directory = "public"
