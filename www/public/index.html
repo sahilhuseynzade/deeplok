@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deeplok — distraction blocking for Omarchy</title>
+<meta name="description" content="Freedom-style website and app blocker built into the Omarchy bar. Instant sessions, recurring schedules, and a locked mode you can't cheat past. Open source, MIT.">
+<meta property="og:title" content="Deeplok — distraction blocking for Omarchy">
+<meta property="og:description" content="Block websites and apps with sessions, schedules, and a locked mode you can't cheat past. Built for Omarchy Linux.">
+<meta property="og:url" content="https://deeplok.com">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 28'%3E%3Cpath d='M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z' stroke='%23e0a458' stroke-width='2' fill='%23101014'/%3E%3Crect x='8.6' y='11.4' width='6.8' height='6.2' rx='1.2' fill='%23e0a458'/%3E%3Cpath d='M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4' stroke='%23e0a458' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0e0e12;
+    --bg2: #101014;
+    --card: #16161c;
+    --card2: #1a1a21;
+    --fg: #e6e1d7;
+    --dim: #8a857a;
+    --faint: #5a564e;
+    --accent: #e0a458;
+    --accent-dim: #8a6836;
+    --border: #24242c;
+    --border2: #2e2e38;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(224,164,88,.25); }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* faint dot grid backdrop */
+  .backdrop {
+    position: fixed; inset: 0; z-index: -1;
+    background-image: radial-gradient(rgba(230,225,215,0.045) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%);
+  }
+
+  /* ---------- nav ---------- */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--fg); }
+  .logo svg { width: 22px; height: 26px; }
+  .logo b { font-size: 15px; letter-spacing: 2px; text-transform: lowercase; }
+  .nav-links { display: flex; gap: 26px; }
+  .nav-links a {
+    color: var(--dim); text-decoration: none; font-size: 13px;
+  }
+  .nav-links a:hover { color: var(--fg); }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    display: flex; align-items: center; gap: 56px;
+    padding: 72px 0 88px;
+  }
+  .hero-copy { flex: 1 1 460px; min-width: 300px; }
+  .kicker {
+    display: inline-block;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
+    padding: 5px 14px;
+    margin-bottom: 26px;
+  }
+  h1 {
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.12;
+    letter-spacing: -0.5px;
+    margin-bottom: 20px;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .hero-sub {
+    color: var(--dim); font-size: 15px; max-width: 46ch;
+    margin-bottom: 34px;
+  }
+  .install {
+    display: flex; align-items: stretch; gap: 0;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    overflow: hidden;
+    max-width: 560px;
+  }
+  .install code {
+    flex: 1; padding: 14px 16px;
+    font-size: 12.5px; color: var(--fg);
+    white-space: nowrap; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .install code::-webkit-scrollbar { display: none; }
+  .install code .p { color: var(--faint); }
+  .install button {
+    border: 0; border-left: 1px solid var(--border2);
+    background: var(--card); color: var(--accent);
+    font: inherit; font-size: 12px; font-weight: 700;
+    padding: 0 18px; cursor: pointer; white-space: nowrap;
+  }
+  .install button:hover { background: var(--card2); }
+  .hero-meta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 18px; }
+  .hero-meta a, .hero-meta span {
+    color: var(--faint); font-size: 12px; text-decoration: none;
+  }
+  .hero-meta a:hover { color: var(--dim); }
+
+  .hero-shot { flex: 0 1 400px; min-width: 280px; position: relative; }
+  .hero-shot::before {
+    content: ""; position: absolute; inset: -12%;
+    background: radial-gradient(ellipse at 50% 40%, rgba(224,164,88,0.12), transparent 65%);
+    z-index: -1;
+  }
+  .hero-shot img {
+    width: 100%; display: block;
+    border-radius: 14px;
+    border: 1px solid var(--border2);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+  }
+
+  /* ---------- sections ---------- */
+  section { padding: 72px 0; border-top: 1px solid var(--border); }
+  .sec-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+    text-transform: uppercase; color: var(--accent);
+    margin-bottom: 10px;
+  }
+  h2 { font-size: 26px; letter-spacing: -0.3px; margin-bottom: 14px; }
+  .sec-sub { color: var(--dim); font-size: 14px; max-width: 60ch; margin-bottom: 42px; }
+
+  /* features */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px 24px;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+  .card svg { width: 26px; height: 26px; margin-bottom: 16px; }
+  .card h3 { font-size: 15px; margin-bottom: 8px; }
+  .card p { color: var(--dim); font-size: 13px; }
+  .card p code {
+    color: var(--fg); font-size: 12px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+
+  /* locked callout */
+  .locked {
+    margin-top: 14px;
+    background: linear-gradient(135deg, rgba(224,164,88,0.08), rgba(224,164,88,0.02));
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    padding: 30px 28px;
+    display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap;
+  }
+  .locked svg { width: 34px; height: 40px; flex-shrink: 0; }
+  .locked h3 { font-size: 16px; margin-bottom: 6px; color: var(--accent); }
+  .locked p { color: var(--dim); font-size: 13.5px; max-width: 72ch; }
+  .locked p b { color: var(--fg); font-weight: 700; }
+
+  /* how it works */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .step {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 26px 24px;
+  }
+  .step .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--bg2); border: 1px solid var(--border2);
+    color: var(--accent); font-size: 13px; font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .step h3 { font-size: 14.5px; margin-bottom: 8px; }
+  .step p { color: var(--dim); font-size: 13px; }
+  .step pre {
+    margin-top: 14px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 11.5px; color: var(--fg);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .step pre::-webkit-scrollbar { display: none; }
+
+  /* block page demo */
+  .demo {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 24px; flex-wrap: wrap;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 30px 28px;
+  }
+  .demo h3 { font-size: 16px; margin-bottom: 6px; }
+  .demo p { color: var(--dim); font-size: 13px; max-width: 56ch; }
+  .btn {
+    display: inline-block;
+    background: var(--accent); color: #17130b;
+    text-decoration: none; font-weight: 700; font-size: 13px;
+    border-radius: 9px; padding: 12px 22px;
+    transition: filter .15s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--border2);
+  }
+  .btn.ghost:hover { border-color: var(--accent-dim); color: var(--accent); filter: none; }
+
+  /* honesty */
+  .honest { color: var(--dim); font-size: 13px; max-width: 72ch; }
+  .honest li { margin: 8px 0 8px 18px; }
+  .honest b { color: var(--fg); }
+
+  /* footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 34px 0 44px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+    color: var(--faint); font-size: 12px;
+  }
+  footer .links { display: flex; gap: 22px; }
+  footer a { color: var(--faint); text-decoration: none; }
+  footer a:hover { color: var(--dim); }
+
+  @media (max-width: 760px) {
+    header.hero { padding: 40px 0 56px; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="backdrop"></div>
+<div class="wrap">
+
+  <nav>
+    <a class="logo" href="/">
+      <svg viewBox="0 0 24 28" fill="none" aria-hidden="true">
+        <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
+              stroke="#e0a458" stroke-width="1.8" fill="rgba(224,164,88,0.07)"/>
+        <rect x="8.6" y="11.4" width="6.8" height="6.2" rx="1.2" fill="#e0a458"/>
+        <path d="M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4" stroke="#e0a458" stroke-width="1.5" fill="none"/>
+      </svg>
+      <b>deeplok</b>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="https://github.com/sahilhuseynzade/deeplok">GitHub</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="hero-copy">
+      <span class="kicker">Omarchy plugin · open source</span>
+      <h1>Block the noise.<br><em>Keep the hours.</em></h1>
+      <p class="hero-sub">
+        Deeplok is a Freedom-style website &amp; app blocker that lives in your
+        Omarchy bar. Instant sessions, recurring schedules, and a locked mode
+        you can't talk your way out of.
+      </p>
+      <div class="install">
+        <code id="cmd"><span class="p">$</span> omarchy plugin add https://github.com/sahilhuseynzade/deeplok.git --enable</code>
+        <button id="copy" type="button" aria-label="Copy install command">copy</button>
+      </div>
+      <div class="hero-meta">
+        <span>MIT licensed</span>
+        <span>·</span>
+        <a href="https://github.com/sahilhuseynzade/deeplok">source on GitHub</a>
+        <span>·</span>
+        <span>no accounts, no subscriptions</span>
+      </div>
+    </div>
+    <div class="hero-shot">
+      <img src="/panel.png" width="460" height="660"
+           alt="Deeplok panel in the Omarchy bar: an active block with countdown, sessions, and schedules">
+    </div>
+  </header>
+
+  <section id="features">
+    <div class="sec-label">Features</div>
+    <h2>Everything Freedom does, living in your bar</h2>
+    <p class="sec-sub">One click on the shield: start a block, build lists, set the week's rhythm.</p>
+
+    <div class="grid">
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="4.5" cy="6" r="1.4" fill="#e0a458" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/>
+          <circle cx="4.5" cy="12" r="1.4" fill="#e0a458" stroke="none"/><line x1="9" y1="12" x2="20" y2="12"/>
+          <circle cx="4.5" cy="18" r="1.4" fill="#e0a458" stroke="none"/><line x1="9" y1="18" x2="16" y2="18"/>
+        </svg>
+        <h3>Blocklists</h3>
+        <p>Named groups of websites and apps — <code>youtube.com</code>, <code>steam</code>, <code>discord</code>. Mix and match per session.</p>
+      </div>
+
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M13 2 L5 14 H11 L10 22 L19 9 H12 Z"/>
+        </svg>
+        <h3>Instant sessions</h3>
+        <p>Pick lists, pick 15 minutes or 12 hours, block now. The bar counts down with you.</p>
+      </div>
+
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="12" cy="13" r="8.5"/><line x1="12" y1="13" x2="12" y2="8"/><line x1="12" y1="13" x2="15.5" y2="15"/>
+          <line x1="9" y1="2.5" x2="15" y2="2.5"/>
+        </svg>
+        <h3>Scheduled starts</h3>
+        <p>Choose a date and time; the block arms itself. Tomorrow-you doesn't get a vote.</p>
+      </div>
+
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 3 L21 7 L17 11"/><path d="M21 7 H8 a5 5 0 0 0 -5 5"/>
+          <path d="M7 21 L3 17 L7 13"/><path d="M3 17 H16 a5 5 0 0 0 5 -5"/>
+        </svg>
+        <h3>Recurring schedules</h3>
+        <p>Mon–Fri 09:00–12:00, weekend evenings, overnight ranges — the week runs on rails.</p>
+      </div>
+
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e0a458" stroke-width="1.7" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/>
+          <line x1="9.5" y1="12" x2="14.5" y2="17" stroke-linecap="round"/>
+          <line x1="14.5" y1="12" x2="9.5" y2="17" stroke-linecap="round"/>
+        </svg>
+        <h3>App blocking</h3>
+        <p>Windows of blocked apps close the moment they appear, with a polite notification.</p>
+      </div>
+
+      <div class="card">
+        <svg viewBox="0 0 24 28" fill="none" aria-hidden="true">
+          <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
+                stroke="#e0a458" stroke-width="1.7" fill="none"/>
+          <path d="M8 13.5 L11 16.5 L16.5 10.5" stroke="#e0a458" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h3>A better wall</h3>
+        <p>Blocked visits land on a calm page with a countdown and a reminder of what the hour is worth — not a browser error.</p>
+      </div>
+    </div>
+
+    <div class="locked">
+      <svg viewBox="0 0 24 28" fill="none" aria-hidden="true">
+        <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
+              stroke="#e0a458" stroke-width="1.6" fill="rgba(224,164,88,0.07)"/>
+        <rect x="8.6" y="11.4" width="6.8" height="6.2" rx="1.2" fill="#e0a458"/>
+        <path d="M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4" stroke="#e0a458" stroke-width="1.5" fill="none"/>
+      </svg>
+      <div>
+        <h3>Locked mode</h3>
+        <p>
+          A locked session <b>cannot be ended, weakened, or uninstalled</b> before
+          it's done. It's enforced by a root-owned helper with its own lock
+          ledger — killing the shell, editing state files, or rage-quitting the
+          panel changes nothing. Future-you will be annoyed. Present-you is counting on it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="sec-label">How it works</div>
+    <h2>Three steps, then it runs itself</h2>
+    <p class="sec-sub">Open source, auditable, and honest about its limits — read the fine print on GitHub.</p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="n">1</span>
+        <h3>Install the plugin</h3>
+        <p>One command adds the shield to your bar.</p>
+        <pre>omarchy plugin add \
+  https://github.com/sahilhuseynzade/deeplok.git \
+  --enable</pre>
+      </div>
+      <div class="step">
+        <span class="n">2</span>
+        <h3>One-time system setup</h3>
+        <p>Click <b>Install system helper</b> in the panel and authenticate once. Website blocks then apply unattended — even at 2 AM, with nobody around to click a dialog.</p>
+      </div>
+      <div class="step">
+        <span class="n">3</span>
+        <h3>Set the rhythm</h3>
+        <p>Build blocklists, start a session, or schedule the week. The bar shows the countdown; the panel holds the controls.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="demo">
+      <div>
+        <h3>See what a blocked moment looks like</h3>
+        <p>Instead of an error page: which site, when the block ends, and a line from someone who understood time better than the feed does.</p>
+      </div>
+      <a class="btn" id="demo-link" href="https://block.deeplok.com/?site=youtube.com">Preview the block page</a>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-label">Fine print</div>
+    <h2>Honest limitations</h2>
+    <ul class="honest">
+      <li>You have root on your own machine — Deeplok raises the friction, it doesn't make bypass impossible. (Neither does anything else.)</li>
+      <li>Sites that hard-force HTTPS (YouTube, Instagram…) show the browser's own error instead of the block page. <b>They're still blocked.</b></li>
+      <li>Browsers with DNS-over-HTTPS enabled can bypass hosts-based blocking — turn DoH off for best results.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>© <span id="year">2026</span> Deeplok · MIT</span>
+    <div class="links">
+      <a href="https://github.com/sahilhuseynzade/deeplok">GitHub</a>
+      <a href="https://github.com/sahilhuseynzade/deeplok#readme">Docs</a>
+      <a href="https://plugins.omarchy.org">Omarchy plugins</a>
+    </div>
+  </footer>
+
+</div>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+
+  // Demo link gets a live end-time so the preview shows the real countdown.
+  var demo = document.getElementById("demo-link");
+  demo.href = "https://block.deeplok.com/?site=youtube.com&until="
+    + (Math.floor(Date.now() / 1000) + 47 * 60);
+
+  var btn = document.getElementById("copy");
+  btn.addEventListener("click", function () {
+    var text = "omarchy plugin add https://github.com/sahilhuseynzade/deeplok.git --enable";
+    function done(label) {
+      btn.textContent = label;
+      setTimeout(function () { btn.textContent = "copy"; }, 1600);
+    }
+    if (navigator.clipboard)
+      navigator.clipboard.writeText(text).then(
+        function () { done("copied"); },
+        function () { done("failed"); });
+    else done("failed");
+  });
+</script>
+</body>
+</html>

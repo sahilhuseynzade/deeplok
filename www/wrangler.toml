@@ -1,0 +1,11 @@
+name = "deeplok-www"
+compatibility_date = "2026-08-01"
+workers_dev = true
+
+routes = [
+  { pattern = "deeplok.com", custom_domain = true },
+  { pattern = "www.deeplok.com", custom_domain = true }
+]
+
+[assets]
+directory = "public"
