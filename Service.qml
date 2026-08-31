@@ -340,15 +340,22 @@ Item {
 
   // ---- Persistence ---------------------------------------------------------
 
+  // Fires both for the initial auto-load and for ensureDirProc's reload of
+  // the seeded "{}" file, so it must be idempotent. A reload resets adapter
+  // properties to whatever the file holds; the first-run seed is therefore
+  // applied here (post-reload) and immediately persisted, never earlier —
+  // otherwise the "{}" reload would wipe it before the debounced save fires.
   function onStateLoaded() {
     var clean = Model.sanitizeState({
       blocklists: stateAdapter.blocklists,
       schedules: stateAdapter.schedules,
       sessions: stateAdapter.sessions
     })
+    var needSave = false
     if (stateAdapter.seeded !== true) {
       clean = Model.defaultState()
       stateAdapter.seeded = true
+      needSave = true
     }
     root.blocklists = clean.blocklists
     root.schedules = clean.schedules
@@ -356,26 +363,17 @@ Item {
     if (!root.ready) {
       root.ready = true
       root.startupPhase = false
-      root.persist()
       statusProc.running = true
-      root.reconcile()
     }
+    if (needSave) root.persist()
+    root.reconcile()
   }
 
+  // Expected once on the very first run: the FileView auto-loads before
+  // ensureDirProc has seeded the file. ensureDirProc's reload lands in
+  // onStateLoaded, which does the real first-run setup.
   function onStateLoadFailed() {
-    console.warn("shl.deeplok: state load failed, starting fresh")
-    if (!root.ready) {
-      var seed = Model.defaultState()
-      root.blocklists = seed.blocklists
-      root.schedules = seed.schedules
-      root.sessions = seed.sessions
-      root.ready = true
-      root.startupPhase = false
-      stateAdapter.seeded = true
-      root.persist()
-      statusProc.running = true
-      root.reconcile()
-    }
+    console.warn("shl.deeplok: state not loadable yet, waiting for seed")
   }
 
   FileView {
