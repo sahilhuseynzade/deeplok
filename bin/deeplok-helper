@@ -79,6 +79,33 @@ write_hosts() {
   resolvectl flush-caches 2>/dev/null || true
 }
 
+# Chromium-family managed-policy dirs. HttpAllowlist tells the browser the
+# listed hosts are plain-http on purpose, so HTTPS-First mode goes straight
+# to http://<domain> — where the redirect socket serves the block page —
+# instead of interposing a "site doesn't support secure connection" warning.
+# (HSTS-preloaded sites still force https; nothing file-based changes that.)
+POLICY_DIRS=(
+  /etc/chromium/policies/managed
+  /etc/opt/chrome/policies/managed
+  /etc/brave/policies/managed
+)
+
+# $1 = newline-separated domain list (may be empty → policies removed).
+write_policies() {
+  local domains="$1" dir tmp
+  for dir in "${POLICY_DIRS[@]}"; do
+    if [[ -z $domains ]]; then
+      rm -f "$dir/deeplok.json"
+      continue
+    fi
+    mkdir -p "$dir"
+    tmp=$(mktemp "$dir/.deeplok.XXXXXX")
+    jq -nR '{"HttpAllowlist": [inputs | select(length > 0)]}' <<<"$domains" >"$tmp"
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$dir/deeplok.json"
+  done
+}
+
 # Every domain must look like a hostname; refuse the whole payload otherwise
 # (a stray space would smuggle extra hosts entries onto the line).
 validate_domains() {
@@ -144,6 +171,7 @@ cmd_apply() {
   fi
 
   write_hosts "$effective"
+  write_policies "$effective"
   local n
   n=$(grep -c . <<<"$effective" || true)
   echo "ok $n"
@@ -160,6 +188,7 @@ cmd_clear() {
   fi
   rm -f "$LOCK" "$META"
   write_hosts ""
+  write_policies ""
   echo "ok cleared"
 }
 

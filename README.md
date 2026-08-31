@@ -52,6 +52,12 @@ needs it.
   hosted block page. No process runs while nothing is blocked — systemd
   spawns one short-lived responder per visit. The redirect carries
   `?site=<domain>&until=<end>` so the page can show a live countdown.
+- While a block is active the helper also writes an `HttpAllowlist`
+  managed policy for Chromium-family browsers (`/etc/chromium`,
+  `/etc/opt/chrome`, `/etc/brave`) listing only the blocked hostnames, so
+  HTTPS-First mode goes straight to the block page instead of showing a
+  "site doesn't support a secure connection" warning. Removed when the
+  block ends.
 - **Apps** are matched against Wayland toplevel app ids (exact, or
   substring of 3+ chars) and politely closed via the compositor.
 - **Locked mode** writes a lock ledger to `/etc/deeplok/lock.json`. While
