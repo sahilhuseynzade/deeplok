@@ -36,7 +36,47 @@ cmd_install() {
 
   install -D -o root -g root -m 755 "$src_dir/bin/deeplok-helper" "$HELPER"
   install -D -o root -g root -m 755 "$src_dir/bin/deeplok-setup" "$LIB_DIR/deeplok-setup"
+  install -D -o root -g root -m 755 "$src_dir/redirect/deeplok-redirect" "$LIB_DIR/deeplok-redirect"
   install -d -o root -g root -m 755 "$STATE_DIR"
+
+  # Socket-activated block redirect: nothing runs until a blocked domain
+  # (pointed at 127.222.0.1 in /etc/hosts) is actually visited; then one
+  # short-lived process answers with a 302 to the hosted block page.
+  cat >/etc/systemd/system/deeplok-redirect.socket <<'EOF'
+[Unit]
+Description=Deeplok block page redirect socket
+
+[Socket]
+ListenStream=127.222.0.1:80
+FreeBind=yes
+Accept=yes
+MaxConnections=32
+MaxConnectionsPerSource=16
+
+[Install]
+WantedBy=sockets.target
+EOF
+  cat >/etc/systemd/system/deeplok-redirect@.service <<'EOF'
+[Unit]
+Description=Deeplok block page redirect
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/lib/deeplok/deeplok-redirect
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=10
+EOF
+  chmod 644 /etc/systemd/system/deeplok-redirect.socket /etc/systemd/system/deeplok-redirect@.service
+  systemctl daemon-reload
+  systemctl enable --now deeplok-redirect.socket >/dev/null 2>&1 || true
 
   local tmp
   tmp=$(mktemp)
@@ -64,6 +104,9 @@ cmd_uninstall() {
     fi
   fi
   [[ -x $HELPER ]] && "$HELPER" clear >/dev/null 2>&1 || true
+  systemctl disable --now deeplok-redirect.socket >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/deeplok-redirect.socket /etc/systemd/system/deeplok-redirect@.service
+  systemctl daemon-reload
   rm -f "$SUDOERS"
   rm -rf "$LIB_DIR" "$STATE_DIR"
   echo "ok uninstalled"

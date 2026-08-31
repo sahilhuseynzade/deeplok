@@ -197,6 +197,8 @@ test("applyPayload emits the helper contract", () => {
   assert.deepEqual(p.domains, ["www.x.com", "www.youtube.com", "x.com", "youtube.com"])
   assert.deepEqual(p.lockedDomains, p.domains)
   assert.equal(p.lockedUntil, Math.floor(at(11, 0).getTime() / 1000))
+  // Session ends 11:00 but the work-hours schedule runs to 12:00.
+  assert.equal(p.endsAt, Math.floor(at(12, 0).getTime() / 1000))
 })
 
 test("sanitizeState survives junk", () => {

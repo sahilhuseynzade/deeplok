@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "shl.deeplok",
   "name": "Deeplok",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Sahil Huseynzade",
   "description": "Freedom-style distraction blocker for Omarchy: block websites and apps with instant sessions, scheduled starts, recurring weekly blocks, and an optional locked mode you can't cheat past.",
   "homepage": "https://deeplok.com",

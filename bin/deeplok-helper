@@ -21,8 +21,16 @@ set -euo pipefail
 HOSTS=/etc/hosts
 STATE_DIR=/etc/deeplok
 LOCK="$STATE_DIR/lock.json"
+META="$STATE_DIR/block-meta.json"
 MARK_BEGIN="# >>> deeplok >>>"
 MARK_END="# <<< deeplok <<<"
+
+# Dedicated loopback address answered by the socket-activated
+# deeplok-redirect unit (302 to the hosted block page). The v6 entry is the
+# v4-mapped form of the same address: it keeps AAAA lookups from falling
+# through to real DNS while still landing on the v4 listener.
+BLOCK_V4="127.222.0.1"
+BLOCK_V6="::ffff:127.222.0.1"
 
 die() {
   echo "deeplok-helper: $*" >&2
@@ -59,8 +67,8 @@ write_hosts() {
       echo "# Managed by Deeplok (https://deeplok.com) — do not edit this block."
       while IFS= read -r d; do
         [[ -n $d ]] || continue
-        printf '0.0.0.0 %s\n' "$d"
-        printf ':: %s\n' "$d"
+        printf '%s %s\n' "$BLOCK_V4" "$d"
+        printf '%s %s\n' "$BLOCK_V6" "$d"
       done <<<"$domains"
       echo "$MARK_END"
     fi
@@ -86,11 +94,13 @@ cmd_apply() {
   payload=$(cat)
   jq -e . >/dev/null 2>&1 <<<"$payload" || die "payload is not valid JSON"
 
-  local domains locked_domains locked_until
+  local domains locked_domains locked_until block_ends
   domains=$(jq -r '.domains[]? // empty' <<<"$payload")
   locked_domains=$(jq -r '.lockedDomains[]? // empty' <<<"$payload")
   locked_until=$(jq -r '(.lockedUntil // 0) | floor' <<<"$payload")
+  block_ends=$(jq -r '(.endsAt // 0) | floor' <<<"$payload")
   [[ $locked_until =~ ^[0-9]+$ ]] || die "lockedUntil must be a number"
+  [[ $block_ends =~ ^[0-9]+$ ]] || die "endsAt must be a number"
   validate_domains "$domains"
   validate_domains "$locked_domains"
 
@@ -122,6 +132,17 @@ cmd_apply() {
       jq -r '.[].domains[]?' <<<"$entries"
     } | grep -v '^$' | sort -u || true
   )
+  # World-readable end-time for the redirect script's &until= parameter.
+  if [[ -n $effective && $block_ends -gt $now ]]; then
+    local mtmp
+    mtmp=$(mktemp "$STATE_DIR/.meta.XXXXXX")
+    jq -n --argjson endsAt "$block_ends" '{endsAt: $endsAt}' >"$mtmp"
+    chmod 644 "$mtmp"
+    mv -f "$mtmp" "$META"
+  else
+    rm -f "$META"
+  fi
+
   write_hosts "$effective"
   local n
   n=$(grep -c . <<<"$effective" || true)
@@ -137,7 +158,7 @@ cmd_clear() {
     echo "deeplok-helper: refusing to clear — locked until $(date -d "@$until" '+%Y-%m-%d %H:%M')" >&2
     exit 3
   fi
-  rm -f "$LOCK"
+  rm -f "$LOCK" "$META"
   write_hosts ""
   echo "ok cleared"
 }

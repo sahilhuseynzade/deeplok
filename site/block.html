@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Blocked — Deeplok</title>
+<style>
+  :root {
+    --bg: #101014;
+    --card: #17171d;
+    --fg: #e6e1d7;
+    --dim: #8a857a;
+    --faint: #55524b;
+    --accent: #e0a458;
+    --border: #26262e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: min(560px, 100%);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 48px 44px 36px;
+    text-align: center;
+  }
+  .shield { width: 54px; height: 62px; margin: 0 auto 26px; display: block; }
+  .brand {
+    color: var(--faint);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 24px; font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    overflow-wrap: anywhere;
+  }
+  h1 .domain { color: var(--accent); }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 26px; }
+  .countdown {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 13px;
+    color: var(--dim);
+    margin-bottom: 38px;
+  }
+  .countdown b { color: var(--accent); font-weight: 700; }
+  .quote-wrap { min-height: 96px; }
+  blockquote {
+    font-size: 15px; line-height: 1.65;
+    color: var(--fg);
+    font-style: italic;
+    transition: opacity .45s ease;
+  }
+  cite {
+    display: block;
+    margin-top: 12px;
+    color: var(--dim);
+    font-style: normal;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: opacity .45s ease;
+  }
+  .foot {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  .foot a { color: var(--faint); text-decoration: none; }
+  .foot a:hover { color: var(--dim); }
+</style>
+</head>
+<body>
+  <main class="card">
+    <svg class="shield" viewBox="0 0 24 28" fill="none" aria-hidden="true">
+      <path d="M12 1 L23 5 V13 C23 20.5 18.4 25.4 12 27 C5.6 25.4 1 20.5 1 13 V5 Z"
+            stroke="#e0a458" stroke-width="1.6" fill="rgba(224,164,88,0.07)"/>
+      <rect x="8.6" y="11.4" width="6.8" height="6.2" rx="1.2" fill="#e0a458"/>
+      <path d="M9.8 11.4 V9.6 a2.2 2.2 0 0 1 4.4 0 V11.4" stroke="#e0a458"
+            stroke-width="1.5" fill="none"/>
+    </svg>
+    <div class="brand">Deeplok</div>
+    <h1><span class="domain" id="domain">This site</span> is blocked</h1>
+    <div class="sub">You decided this hour belongs to something better.</div>
+    <div class="countdown" id="countdown" hidden>
+      Block ends at <b id="ends-clock"></b> · <b id="ends-left"></b> left
+    </div>
+    <div class="quote-wrap">
+      <blockquote id="quote"></blockquote>
+      <cite id="author"></cite>
+    </div>
+    <div class="foot">blocked by <a href="https://deeplok.com">deeplok</a> · back to work</div>
+  </main>
+<script>
+  var QUOTES = [
+    ["It is not that we have a short time to live, but that we waste a lot of it.", "Seneca"],
+    ["You may delay, but time will not.", "Benjamin Franklin"],
+    ["Lost time is never found again.", "Benjamin Franklin"],
+    ["The trouble is, you think you have time.", "Jack Kornfield"],
+    ["If you love life, don't waste time, for time is what life is made up of.", "Bruce Lee"],
+    ["How we spend our days is, of course, how we spend our lives.", "Annie Dillard"],
+    ["A year from now you may wish you had started today.", "Karen Lamb"],
+    ["Beware the barrenness of a busy life.", "Socrates"],
+    ["Either you run the day, or the day runs you.", "Jim Rohn"],
+    ["What you do today can improve all your tomorrows.", "Ralph Marston"],
+    ["The cost of a thing is the amount of life which is required to be exchanged for it.", "Henry David Thoreau"],
+    ["Focus is a matter of deciding what things you're not going to do.", "John Carmack"],
+    ["You could leave life right now. Let that determine what you do and say and think.", "Marcus Aurelius"],
+    ["Concentrate every minute on doing what's in front of you with precise and genuine seriousness.", "Marcus Aurelius"]
+  ];
+
+  var params = new URLSearchParams(location.search);
+
+  var site = (params.get("site") || "").toLowerCase();
+  if (/^[a-z0-9.-]{1,253}$/.test(site))
+    document.getElementById("domain").textContent = site;
+
+  var qi = Math.floor(Math.random() * QUOTES.length);
+  var quoteEl = document.getElementById("quote");
+  var authorEl = document.getElementById("author");
+  function showQuote() {
+    quoteEl.textContent = "“" + QUOTES[qi][0] + "”";
+    authorEl.textContent = "— " + QUOTES[qi][1];
+  }
+  showQuote();
+  setInterval(function () {
+    quoteEl.style.opacity = 0; authorEl.style.opacity = 0;
+    setTimeout(function () {
+      qi = (qi + 1) % QUOTES.length;
+      showQuote();
+      quoteEl.style.opacity = 1; authorEl.style.opacity = 1;
+    }, 460);
+  }, 12000);
+
+  var endsAt = parseInt(params.get("until") || "0", 10);
+  if (endsAt > Date.now() / 1000) {
+    var clockEl = document.getElementById("ends-clock");
+    var leftEl = document.getElementById("ends-left");
+    var d = new Date(endsAt * 1000);
+    clockEl.textContent =
+      ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    function tick() {
+      var s = Math.max(0, endsAt - Math.floor(Date.now() / 1000));
+      var out;
+      if (s >= 3600) out = Math.floor(s / 3600) + "h " + Math.ceil((s % 3600) / 60) + "m";
+      else if (s >= 60) out = Math.ceil(s / 60) + "m";
+      else out = s + "s";
+      leftEl.textContent = out;
+    }
+    tick();
+    setInterval(tick, 1000);
+    document.getElementById("countdown").hidden = false;
+  }
+</script>
+</body>
+</html>

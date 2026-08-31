@@ -22,6 +22,9 @@ weekly blocks — and an optional locked mode you can't cheat past.
   helper, not just the UI: even killing the shell doesn't lift the block.
 - **App blocking** — windows of blocked apps are closed the moment they
   appear, with a notification.
+- **Block page** — visiting a blocked site lands on
+  [block.deeplok.com](https://block.deeplok.com): which site was blocked,
+  when the block ends, and a rotating reminder of what the hour is worth.
 
 ## Install
 
@@ -39,11 +42,16 @@ needs it.
   seconds it evaluates your sessions and schedules and reconciles the
   desired block set.
 - **Websites** are blocked through a marked section in `/etc/hosts`
-  (`0.0.0.0` + `::` entries, `www.` variants included), applied by a small
-  root-owned helper at `/usr/local/lib/deeplok/deeplok-helper`. A sudoers
-  drop-in (`/etc/sudoers.d/50-deeplok`) allows exactly three invocations —
+  (`www.` variants included), applied by a small root-owned helper at
+  `/usr/local/lib/deeplok/deeplok-helper`. A sudoers drop-in
+  (`/etc/sudoers.d/50-deeplok`) allows exactly three invocations —
   `apply`, `clear`, `status` — with no password, so scheduled blocks
   engage unattended (at 2 AM, with no dialog to click).
+- Blocked domains point at a dedicated loopback address (`127.222.0.1`),
+  where a **socket-activated** systemd unit answers with a redirect to the
+  hosted block page. No process runs while nothing is blocked — systemd
+  spawns one short-lived responder per visit. The redirect carries
+  `?site=<domain>&until=<end>` so the page can show a live countdown.
 - **Apps** are matched against Wayland toplevel app ids (exact, or
   substring of 3+ chars) and politely closed via the compositor.
 - **Locked mode** writes a lock ledger to `/etc/deeplok/lock.json`. While
@@ -57,6 +65,15 @@ needs it.
 - You have root on your own machine; a determined future-you can always
   edit `/etc/hosts` with `sudo`. Deeplok raises the friction (like
   Freedom does), it doesn't make bypass impossible.
+- **HSTS sites still show a browser error.** Sites on the HSTS preload
+  list (YouTube, Instagram, X, …) force `https`, and no local tool can
+  present a valid certificate for someone else's domain — so those visits
+  show the browser's own error page instead of the block page. Sites that
+  fall back to plain `http` get the nice page.
+- **Privacy**: the redirect sends the blocked domain and the block's end
+  time to `block.deeplok.com` as URL parameters. The page is static; no
+  other data leaves your machine. If you'd rather not, the blocking works
+  identically with the redirect socket disabled.
 - Browsers with **DNS-over-HTTPS** enabled bypass `/etc/hosts`. Disable
   DoH in the browser (or point it at the system resolver) for reliable
   blocking.
@@ -86,7 +103,8 @@ omarchy plugin validate .     # manifest checks
 Layout: `Service.qml` (engine: timers, disk, processes), `Panel.qml` +
 `BarWidget.qml` (UI), `lib/Model.js` (pure, tested logic),
 `bin/deeplok-helper` (root side), `bin/deeplok-setup` (pkexec
-install/uninstall).
+install/uninstall), `redirect/deeplok-redirect` (socket-activated 302
+responder), `site/block.html` (the hosted block page).
 
 ## License
 

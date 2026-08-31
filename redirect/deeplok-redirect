@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Deeplok block redirect — one connection, one 302, exit.
+
+Spawned per connection by systemd socket activation (Accept=yes) on
+127.222.0.1:80, where /etc/hosts points blocked domains. No process runs
+while nothing is blocked or nothing is visited. Reads just enough of the
+HTTP request to learn the Host, then redirects to the hosted block page
+with the domain and the block's end time (from block-meta.json) in the
+query string.
+
+HTTPS visits to HSTS-preloaded sites never get here — the browser refuses
+before connecting. Plain-http and https-fallback navigations do.
+"""
+
+import json
+import re
+import signal
+import sys
+
+BLOCK_PAGE = "https://block.deeplok.com/"
+META = "/etc/deeplok/block-meta.json"
+HOST_RE = re.compile(r"^[a-z0-9.-]{1,253}$")
+
+# A wedged client must not pin a process; systemd cleans us up either way,
+# but be prompt about it.
+signal.alarm(5)
+
+
+def read_host():
+    host = ""
+    stdin = sys.stdin.buffer
+    for _ in range(64):  # header-count cap
+        line = stdin.readline(1024)
+        if not line or line in (b"\r\n", b"\n"):
+            break
+        if line.lower().startswith(b"host:"):
+            host = line.split(b":", 1)[1].strip().decode("latin-1", "replace")
+            host = host.split(":")[0].strip().lower()
+    return host if HOST_RE.match(host) else ""
+
+
+def ends_at():
+    try:
+        with open(META) as f:
+            return int(json.load(f).get("endsAt", 0))
+    except (OSError, ValueError):
+        return 0
+
+
+host = read_host()
+location = BLOCK_PAGE
+query = []
+if host:
+    query.append("site=" + host)
+until = ends_at()
+if until > 0:
+    query.append("until=%d" % until)
+if query:
+    location += "?" + "&".join(query)
+
+sys.stdout.buffer.write(
+    (
+        "HTTP/1.1 302 Found\r\n"
+        "Location: %s\r\n"
+        "Cache-Control: no-store\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n" % location
+    ).encode("ascii")
+)
+sys.stdout.buffer.flush()
