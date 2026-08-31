@@ -104,7 +104,7 @@ Layout: `Service.qml` (engine: timers, disk, processes), `Panel.qml` +
 `BarWidget.qml` (UI), `lib/Model.js` (pure, tested logic),
 `bin/deeplok-helper` (root side), `bin/deeplok-setup` (pkexec
 install/uninstall), `redirect/deeplok-redirect` (socket-activated 302
-responder), `site/index.html` (the hosted block page).
+responder), `site/public/index.html` (the hosted block page).
 
 ## License
 
